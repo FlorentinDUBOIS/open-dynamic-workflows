@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="430" viewBox="0 0 760 430" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" role="img" aria-label="terminal demo of an open-dynamic-workflows run">
+  <defs>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2d3a"/>
+      <stop offset="1" stop-color="#24262f"/>
+    </linearGradient>
+  </defs>
+
+  <!-- window -->
+  <rect x="0" y="0" width="760" height="430" rx="12" fill="#1a1b22"/>
+  <rect x="0" y="0" width="760" height="34" rx="12" fill="url(#bar)"/>
+  <rect x="0" y="22" width="760" height="12" fill="#24262f"/>
+  <circle cx="20" cy="17" r="6" fill="#ff5f56"/>
+  <circle cx="40" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="60" cy="17" r="6" fill="#27c93f"/>
+  <text x="380" y="22" text-anchor="middle" fill="#8b8fa3" font-size="12">odw-daemon — run</text>
+
+  <text xml:space="preserve" font-size="13.5">
+    <tspan x="22" y="62" fill="#9aa0b4">$ </tspan><tspan fill="#e6e7ee">odw-daemon run --prompt </tspan><tspan fill="#a5e075">"workflow: audit every endpoint for missing auth"</tspan>
+    <tspan x="22" y="92" fill="#818cf8" font-weight="bold">plan</tspan>
+    <tspan x="22" y="114" fill="#8b8fa3">  topology     </tspan><tspan fill="#e6e7ee">hybrid</tspan>
+    <tspan x="22" y="134" fill="#8b8fa3">  agents       </tspan><tspan fill="#e6e7ee">~25 (max 16 concurrent)</tspan>
+    <tspan x="22" y="154" fill="#8b8fa3">  est. cost    </tspan><tspan fill="#e6e7ee">$0.00  </tspan><tspan fill="#8b8fa3">est. time  ~4 min</tspan>
+    <tspan x="22" y="174" fill="#8b8fa3">  verification </tspan><tspan fill="#7ee787">yes (adversarial)</tspan>
+    <tspan x="22" y="200" fill="#7ee787">▶</tspan><tspan fill="#e6e7ee"> workflow wf_4579665d running</tspan>
+    <tspan x="22" y="222" fill="#8b8fa3">  20 done / 0 failed   25 done / 1 failed   33 done / 2 failed</tspan>
+    <tspan x="22" y="248" fill="#7ee787">✓ completed</tspan>
+    <tspan x="22" y="276" fill="#9aa0b4">{</tspan>
+    <tspan x="22" y="296" fill="#9aa0b4">  </tspan><tspan fill="#79c0ff">"summary"</tspan><tspan fill="#9aa0b4">: </tspan><tspan fill="#a5e075">"6 routes confirmed missing auth; verified</tspan>
+    <tspan x="22" y="316" fill="#a5e075">             against false positives by 3 critics."</tspan>
+    <tspan x="22" y="336" fill="#9aa0b4">  </tspan><tspan fill="#79c0ff">"criticalCount"</tspan><tspan fill="#9aa0b4">: </tspan><tspan fill="#ffab70">2</tspan><tspan fill="#9aa0b4">,</tspan>
+    <tspan x="22" y="356" fill="#9aa0b4">  </tspan><tspan fill="#79c0ff">"recommendations"</tspan><tspan fill="#9aa0b4">: [ … ]</tspan>
+    <tspan x="22" y="376" fill="#9aa0b4">}</tspan>
+    <tspan x="22" y="404" fill="#8b8fa3">the model planned it · the script ran it · nothing left your machine</tspan>
+  </text>
+</svg>

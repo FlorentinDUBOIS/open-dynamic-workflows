@@ -1,20 +1,31 @@
 <p align="center">
-  <img src="assets/banner.svg" alt="open dynamic workflows" width="660">
+  <img src="assets/banner.svg" alt="Open Dynamic Workflows — open-source dynamic multi-agent workflows for AI coding agents" width="660">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-6366f1?style=flat-square" alt="MIT">
+  <strong>Open-source dynamic multi-agent workflows for any AI coding agent.</strong><br>
+  The script-as-orchestrator pattern behind Claude Code's dynamic workflows and ultracode — MIT-licensed, local-first, and wired into <a href="#inside-your-agent">OpenCode, OpenAI Codex, Google Antigravity, and VS Code</a>.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Suraj1235/open-dynamic-workflows/actions/workflows/ci.yml"><img src="https://github.com/Suraj1235/open-dynamic-workflows/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/license-MIT-6366f1?style=flat-square" alt="MIT licensed">
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2020-6366f1?style=flat-square" alt="node >= 20">
-  <img src="https://img.shields.io/badge/hosting_cost-%240-22c55e?style=flat-square" alt="$0 hosting">
+  <img src="https://img.shields.io/badge/cross--platform-mac%20%C2%B7%20linux%20%C2%B7%20windows-6366f1?style=flat-square" alt="cross platform">
+  <img src="https://img.shields.io/badge/hosting_cost-%240-22c55e?style=flat-square" alt="$0 hosting cost">
   <img src="https://img.shields.io/badge/telemetry-none-22c55e?style=flat-square" alt="no telemetry">
   <img src="https://img.shields.io/badge/sandbox-quickjs%20wasm-6366f1?style=flat-square" alt="quickjs wasm sandbox">
 </p>
 
+<p align="center">
+  <img src="assets/demo.svg" alt="Terminal: planning and running a multi-agent workflow with adversarial verification on a free model" width="680">
+</p>
+
 When you ask one LLM to coordinate fifty agents, it spends its context window keeping track of the other forty-nine. The good agentic harnesses got around this by having the model write a *script* once — a plain JavaScript function that loops, fans out, verifies, and returns — and then a runtime executes that script while the model goes quiet. The model is the author. The script is the orchestrator. That trick is why a coding agent can run a hundred sub-agents for an hour without losing the plot.
 
-That capability has been locked to one tool. This is the same idea, MIT-licensed, running on your machine, talking to whatever model you already pay for.
+That capability has been locked to one proprietary tool. This is the same idea — an open-source alternative — MIT-licensed, running on your machine, talking to whatever model you already pay for (or a free local one).
 
-It ships as a small local daemon plus thin adapters for the agents you already use — OpenCode, Codex, Antigravity, VS Code, or a bare shell. No accounts, no hosted backend, no telemetry. You bring an API key (or point it at Ollama and bring nothing).
+It ships as a small local daemon plus thin adapters for the agents you already use — **OpenCode, OpenAI Codex, Google Antigravity, VS Code, or a bare shell**. No accounts, no hosted backend, no telemetry, no subscription. You bring an API key (or point it at Ollama and bring nothing).
 
 ```
 you ──▶ "workflow: audit every endpoint for missing auth"
@@ -23,6 +34,17 @@ you ──▶ "workflow: audit every endpoint for missing auth"
         ├─ confirm   [run] [view script] [edit]
         └─ run       ▶ wf_9f3c2a  → 200 endpoints checked, 6 real issues, report written
 ```
+
+### Contents
+
+- [How it works](#how-it-works)
+- [Topologies](#topologies)
+- [Quick start](#quick-start)
+- [Inside your agent](#inside-your-agent) — OpenCode · Codex · Antigravity · VS Code
+- [The script the model writes](#the-script-the-model-writes)
+- [How it compares](#how-it-compares)
+- [Safety](#safety-briefly)
+- [FAQ](#faq)
 
 ---
 
@@ -192,6 +214,20 @@ packages/
 examples/workflows/     runnable orchestration scripts
 ```
 
+## How it compares
+
+|  | Open Dynamic Workflows | Proprietary dynamic workflows | A plain agent loop |
+|---|---|---|---|
+| Orchestrator | a generated JS script | a generated JS script | the LLM, turn by turn |
+| Runs on | your machine | a vendor's cloud | your machine |
+| Works in | OpenCode, Codex, Antigravity, VS Code, shell | one vendor's tool | wherever it's built in |
+| Parallel agents | up to your hardware (default 16) | yes | a handful before context fills |
+| Crash-resume | yes (SQLite + WAL) | yes | no |
+| Adversarial verification | built in | built in | you bolt it on |
+| Bring your own model | Anthropic, OpenAI-compatible, Ollama, local | vendor's models | varies |
+| Cost | $0 + your tokens (or free local) | subscription + tokens | your tokens |
+| License | MIT | proprietary | varies |
+
 ## Safety, briefly
 
 - The sandbox is QuickJS compiled to WebAssembly. A workflow script gets the primitives and nothing else — no `fs`, no `process`, no `require`, no network. (We picked WASM-QuickJS over `vm2`, which was abandoned in 2023 and has since collected critical sandbox-escape CVEs.)
@@ -210,6 +246,27 @@ npm test          # unit + integration + a real crash-resume test
 npm run lint
 ```
 
+## FAQ
+
+**Is this an open-source alternative to Claude Code's dynamic workflows / ultracode?**
+Yes. It replicates the same script-as-orchestrator architecture — the model writes one orchestration script, a runtime executes it — and makes it work outside any single vendor, under an MIT license, on your own machine.
+
+**Which AI coding agents does it work with?**
+OpenCode (plugin), OpenAI Codex (skill + bridge), Google Antigravity (skill + saved workflow), VS Code (extension), and any shell via the `odw-daemon` CLI. The daemon is the engine; each adapter is a thin client over its local HTTP API.
+
+**Do I need an API key or a subscription?**
+No subscription, ever. Bring an Anthropic or OpenAI key, point at any OpenAI-compatible endpoint (Azure, vLLM, LM Studio, Groq, OpenCode Zen), or run a fully local model with **Ollama** for $0.
+
+**Does anything leave my machine?**
+Only the LLM API calls you configure. No telemetry, no hosted backend, no account. The daemon binds to localhost only and your keys never leave `~/.odw/config.json`.
+
+**What makes it reliable at scale?**
+Deterministic crash-resume (SQLite + WAL), per-item-resilient fan-out, self-correcting structured-output retries, hard token/cost budgets, and a WebAssembly-isolated sandbox for the orchestration script.
+
 ## License
 
-MIT. Take it, fork it, ship it. See [LICENSE](LICENSE).
+MIT — take it, fork it, ship it. See [LICENSE](LICENSE).
+
+---
+
+<sub>Open-source multi-agent orchestration / dynamic workflows engine for AI coding agents — a local-first, MIT-licensed alternative to proprietary "dynamic workflows" and "ultracode", for OpenCode, OpenAI Codex, Google Antigravity, and VS Code. Bring your own model: Anthropic, OpenAI, or local via Ollama.</sub>
