@@ -376,6 +376,17 @@ test('tools: blocked commands are caught case-insensitively (Windows + POSIX)', 
   rmSync(root, { recursive: true, force: true });
 });
 
+test('tools: run_bash captures output + exit code on a non-zero exit (no throw)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'odw-run-'));
+  const exec = createToolExecutor({ cwd: root, safety: { requireApprovalFor: [], autoApproveReadOnly: true, dryRun: false, blockedCommands: [] } });
+  const ok = await exec({ tool: 'run_bash', args: ['node -e "process.exit(0)"'] });
+  assert.equal(ok.exitCode, 0);
+  const bad = await exec({ tool: 'run_bash', args: ['node -e "process.exit(5)"'] });
+  assert.equal(bad.failed, true, 'non-zero exit reported, not thrown');
+  assert.notEqual(bad.exitCode, 0);
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('tools: globWalk handles **, *, ? and alternation', () => {
   const root = mkdtempSync(join(tmpdir(), 'odw-glob-'));
   mkdirSync(join(root, 'deep', 'deeper'), { recursive: true });

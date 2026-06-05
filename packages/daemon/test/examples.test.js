@@ -73,10 +73,11 @@ test('example: deep-research.js executes with args()', async () => {
   assert.deepEqual(result.keyFindings, ['k']);
 });
 
-test('example: studio-prime.workflow.js runs the full 6-phase pipeline in the sandbox', async () => {
+test('example: studio-prime.workflow.js builds + tests + reviews end-to-end in the sandbox', async () => {
   const script = readFileSync(join(examplesDir, 'studio-prime.workflow.js'), 'utf8');
   const phases = [];
   const checkpoints = [];
+  const written = [];
   const bridges = {
     agent: async (job) => {
       const role = job.role || '';
@@ -84,23 +85,43 @@ test('example: studio-prime.workflow.js runs the full 6-phase pipeline in the sa
       if (/Findings to review:/.test(p) || /steelman|zero-trust|completeness-checker/i.test(role)) {
         return { approved: true, confidence: 0.9, critique: 'mock: sound', rejectedItems: [] };
       }
-      if (/researcher/.test(role)) return { findings: ['mock'], assumptionUpdates: [] };
-      if (/northstar-validator/.test(role)) return { requirements: [{ id: 'r1', status: 'MET', reason: 'mock' }], overall: 'MET', gaps: [] };
-      return { decisions: ['d'], moduleBoundaries: [], interfaces: [], modules: ['m'], designTokens: {}, deployPlan: {} };
+      if (/northstar-validator/.test(role)) return { requirements: [{ id: 'r1', status: 'MET', reason: 'built + tested' }], overall: 'MET', gaps: [] };
+      // every builder role returns a file set + an entry
+      return {
+        projectName: 'demo', entry: 'src/index.js',
+        files: [
+          { path: 'package.json', contents: '{"name":"demo","type":"module","scripts":{"test":"node --test test/"}}' },
+          { path: 'src/index.js', contents: 'export const add = (a,b)=>a+b;' },
+          { path: 'test/add.test.js', contents: 'import {test} from "node:test";' },
+        ],
+        notes: 'mock', requirements: [], overall: 'MET', gaps: [],
+      };
     },
-    tool: async ({ tool }) => { if (tool === 'read_file') throw new Error('no brief file'); return null; },
+    tool: async ({ tool, args: a }) => {
+      if (tool === 'read_file') throw new Error('no brief file');
+      if (tool === 'web_search') return [{ title: 'Result', url: 'https://example.com/x' }];
+      if (tool === 'web_fetch') return { url: 'https://example.com/x', text: 'mock page text' };
+      if (tool === 'write_file') { written.push(a[0]); return { written: a[0] }; }
+      if (tool === 'run_bash') {
+        const cmd = String(a[0] || '');
+        if (cmd.includes('--test')) return { stdout: '# tests 1\n# pass 1\n# fail 0\n' }; // green suite
+        return { stdout: 'usage: demo [options]\n' };
+      }
+      return null;
+    },
     checkpoint: async (d) => { checkpoints.push(d.phase); return null; },
     log: () => {},
     phase: ({ name }) => phases.push(name),
     budget: () => ({ tokensUsed: 0, costUSD: 0, maxTokens: 1, maxCostUSD: 1, percentUsed: 0 }),
-    args: () => ({ northstar: 'Build a small, well-tested CLI utility.' }),
+    args: () => ({ northstar: 'Build a tiny add() utility, tested, MIT.' }),
   };
   const sandbox = await createSandbox({ hostBridges: bridges, totalTimeoutMs: 120000 });
   const result = await sandbox.runScript(script);
   sandbox.dispose();
   assert.deepEqual(phases, ['P1 Blueprint', 'P2 Link', 'P3 Architecture', 'P4 Implement', 'P5 Stylize', 'P6 Release', 'North Star Validation']);
-  assert.equal(checkpoints.length, 7);
+  assert.equal(checkpoints.length, 6, 'one Apex checkpoint per phase P1-P6');
+  assert.equal(result.productBuilt, true, 'mock test suite is green → product built');
+  assert.ok(written.includes('package.json') && written.includes('src/index.js'), 'real files were written via the tool');
   assert.equal(result.unresolvedBlockers.length, 0);
-  assert.equal(Object.keys(result.phases).length, 6);
   assert.equal(result.northstarValidation.overall, 'MET');
 });

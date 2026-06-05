@@ -182,6 +182,8 @@ var context = {
     run_bash: __makeTool("run_bash"),
     search: __makeTool("search"),
     git: __makeTool("git"),
+    web_search: __makeTool("web_search"),
+    web_fetch: __makeTool("web_fetch"),
     runBash: __makeTool("run_bash") // alias used by some scripts
   },
   strategy: null, // populated by the runner before execute()

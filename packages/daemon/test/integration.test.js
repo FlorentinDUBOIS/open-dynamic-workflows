@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
@@ -87,6 +87,56 @@ test('integration: /config/check passes for the mock (usable model) and plan rep
   const { plan } = await post('/workflows/plan', { prompt: 'workflow: review every file in src for bugs' }).then((r) => r.json());
   assert.equal(plan.hasVerification, true, 'review/bug prompts should plan a verification pass');
   assert.ok(plan.taskGraph.tasks.some((t) => t.type === 'verification'));
+});
+
+test('integration: a bare --script-style plan uses the configured default model (not the hardcoded fallback)', async () => {
+  // A plan with a script but NO strategy (what `odw-daemon run --script` sends)
+  // must route agents to config.models.default — regression for the bug where
+  // it fell back to claude-sonnet-4-6 and failed with "anthropic … api key".
+  const script = 'async function execute(){ return await agent({ role: "probe", prompt: "say hello" }); }\nmodule.exports = { execute };';
+  const { workflowId } = await post('/workflows/exec', { plan: { script } }).then((r) => r.json());
+  let rec;
+  for (let i = 0; i < 100; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    rec = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+    if (['completed', 'failed', 'cancelled'].includes(rec.status)) break;
+  }
+  assert.equal(rec.status, 'completed', `bare-script run should complete on the mock model, got ${rec.status} (${rec.error})`);
+});
+
+test('integration: a --script run inherits config.safety (cleared gates let it write files)', async () => {
+  // Regression: --script bypasses planning, so config.safety must still reach
+  // the tool executor. With requireApprovalFor cleared, write_file must succeed.
+  const home = mkdtempSync(join(tmpdir(), 'odw-safety-'));
+  const proj = mkdtempSync(join(tmpdir(), 'odw-proj-'));
+  const sMock = await startMockLLM();
+  const sDaemon = await startDaemon({
+    port: 0, dbPath: join(home, 'db.sqlite'), logStream: { write() {} },
+    configOverrides: {
+      daemon: { maxConcurrency: 2, logLevel: 'error' },
+      baseURLs: { default: sMock.url }, models: { default: 'mock-model' },
+      safety: { requireApprovalFor: [], autoApproveReadOnly: true, dryRun: false },
+    },
+  });
+  try {
+    const b = `http://127.0.0.1:${sDaemon.port}`;
+    const script = 'async function execute(c){ await c.tools.write_file("out.txt","hello from odw"); return { wrote: true }; }\nmodule.exports = { execute };';
+    const { workflowId } = await (await fetch(`${b}/workflows/exec`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ plan: { script }, cwd: proj }),
+    })).json();
+    let rec;
+    for (let i = 0; i < 100; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      rec = await (await fetch(`${b}/workflows/${workflowId}`)).json();
+      if (['completed', 'failed', 'cancelled'].includes(rec.status)) break;
+    }
+    assert.equal(rec.status, 'completed', `should complete with gates cleared, got ${rec.status} (${rec.error})`);
+    assert.equal(readFileSync(join(proj, 'out.txt'), 'utf8'), 'hello from odw', 'write_file actually wrote');
+  } finally {
+    await sDaemon.close(); await sMock.close();
+    rmSync(home, { recursive: true, force: true }); rmSync(proj, { recursive: true, force: true });
+  }
 });
 
 test('integration: list endpoint includes the workflow', async () => {

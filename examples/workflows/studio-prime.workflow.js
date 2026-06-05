@@ -1,197 +1,201 @@
 /**
- * Studio Prime — autonomous 6-phase product pipeline, expressed as an
- * Open Dynamic Workflows (ODW) orchestration template.
+ * Studio Prime — the autonomous 6-phase product pipeline, as a runnable
+ * Open Dynamic Workflows script. This does what the Studio Prime prompt does:
+ * it RESEARCHES (live web), BUILDS (writes real files), VERIFIES (runs the test
+ * suite and loops fix-until-green), reviews each phase with an adversarial Apex
+ * Red Team, and leaves a WORKING product behind — not just a plan.
  *
- * The model writes this script once; the ODW daemon runs it. Each phase
- * gates the next through an adversarial "Apex Red Team" verification step,
- * with bounded remediation, checkpointing, and a final North Star validation.
+ *   odw-daemon run --script examples/workflows/studio-prime.workflow.js --cwd <project>
  *
- * Run it with the ODW daemon:
- *   odw-daemon run --script studio-prime.workflow.js --cwd <your-project>
+ * To let it build autonomously it must be allowed to write files and run the
+ * test command, so run it with `safety.requireApprovalFor: []` in the config.
+ * Target: a zero-dependency Node project (node:test) — the most reliably
+ * buildable shape; the brief can ask for anything expressible that way.
  *
- * The brief / North Star is read (in order) from:
- *   args().northstar  →  args().brief  →  a PRD file in the project dir
- *   (northstar.md / NORTHSTAR.md / prd.md / PRD.md / brief.md)  →  a default.
- *
- * Primitives used (provided by the ODW sandbox): agent, parallel, verify,
- * loop, phase, log, checkpoint, budget, args, context.tools.
+ * Brief / North Star: args().northstar → a PRD file in cwd → a default.
  */
 
-// ── phase definitions ─────────────────────────────────────────────────────────
-// Each phase: a specialist role, a structured artifact schema, the research
-// questions for its (mandatory) research gate, and the focus the Apex Red Team
-// reviews against. This mirrors Studio Prime's P1–P6 lifecycle.
-const PHASES = [
-  {
-    id: 'blueprint',
-    title: 'P1 Blueprint',
-    role: 'principal-architect',
-    focus: 'architecture soundness, PRD alignment, security baseline',
-    research: ['best architecture and stack for this goal', 'supply-chain and security baseline', 'key library and dependency choices'],
-    schema: { decisions: 'array', dataContracts: 'array', designSystem: 'object', risks: 'array' },
-    instruction: 'Establish the blueprint: pinned stack, architecture decisions with rationale, data contracts (schemas/APIs), a design-system sketch, and the top risks.',
-  },
-  {
-    id: 'link',
-    title: 'P2 Link',
-    role: 'integration-architect',
-    focus: 'integration seams, credentials, data-contract completeness',
-    research: ['integration patterns for the chosen stack', 'auth and identity flows', 'deployment target options'],
-    schema: { moduleBoundaries: 'array', integrationSeams: 'array', authWiring: 'object', deploymentTarget: 'string' },
-    instruction: 'Convert the blueprint into an executable integration plan: module boundaries, integration seams, auth wiring, and a locked deployment target.',
-  },
-  {
-    id: 'architecture',
-    title: 'P3 Architecture',
-    role: 'scaffolding-engineer',
-    focus: 'strict types, test scaffolding validity, infra correctness',
-    research: ['framework conventions and project layout', 'test-runner and coverage setup', 'CI/CD and container scaffolding'],
-    schema: { interfaces: 'array', types: 'array', testStubs: 'array', ciPipeline: 'object', migrations: 'array' },
-    instruction: 'Scaffold interfaces, strict types, passing test stubs (no business logic yet), CI pipeline, and migration setup. List the exact files to create.',
-  },
-  {
-    id: 'implement',
-    title: 'P4 Implement',
-    role: 'implementation-engineer',
-    focus: 'logic correctness, 80%+ coverage, security hardening',
-    research: ['library APIs needed for the features', 'security advisories for the stack', 'performance gotchas'],
-    schema: { modules: 'array', coverageTarget: 'number', securityHardening: 'array', openIssues: 'array' },
-    instruction: 'Fill in the business logic and make the test suite pass. Enumerate each module, the security hardening applied, and any open issues. (Note: deep multi-step code authoring is driven through context.tools.write_file / run_bash — see setup.md.)',
-  },
-  {
-    id: 'stylize',
-    title: 'P5 Stylize',
-    role: 'ux-engineer',
-    focus: 'design correctness, WCAG 2.1 AA accessibility, no anti-patterns',
-    research: ['current WCAG 2.1 AA requirements', 'modern design tokens and motion', 'accessibility audit tooling'],
-    schema: { designTokens: 'object', componentStates: 'array', accessibility: 'object' },
-    instruction: 'Apply the design standard: OKLCH tokens, a full component-state matrix (default/hover/focus/active/disabled), and an accessibility pass. Report any violations.',
-  },
-  {
-    id: 'release',
-    title: 'P6 Release',
-    role: 'release-engineer',
-    focus: 'release safety, smoke coverage, rollback readiness, handoff completeness',
-    research: ['deployment target documentation', 'monitoring and alerting integrations', 'secrets management for the target'],
-    schema: { deployPlan: 'object', smokeTests: 'array', rollback: 'object', handoff: 'object' },
-    instruction: 'Produce the release: build + deploy plan, smoke tests for every critical path, an executable rollback, and a complete handoff document outline.',
-  },
-];
-
-// ── Apex Red Team gate (adversarial verification) ───────────────────────────────
-function apexReview(ph, artifact, northstar) {
+// ── adversarial Apex Red Team gate ──────────────────────────────────────────────
+function apexReview(title, focus, artifact, northstar) {
   return verify({
-    target: { phase: ph.title, focus: ph.focus, northstar: String(northstar).slice(0, 1200), artifact },
+    target: { phase: title, focus, northstar: String(northstar).slice(0, 1000), artifact: clip(artifact, 4000) },
     mode: 'adversarial',
     critics: [
-      { role: 'steelman-then-skeptic', prompt: 'First steelman this ' + ph.title + ' artifact, then attack it hard. Approve ONLY if you find no blocking flaw against the goal.' },
-      { role: 'zero-trust-auditor', prompt: 'You are a zero-trust auditor told there IS a critical security or architectural flaw in this ' + ph.title + ' artifact. Find it; you cannot conclude "none".' },
-      { role: 'completeness-checker', prompt: 'What REQUIRED element is missing for: ' + ph.focus + '? If something essential is absent, reject.' },
+      { role: 'steelman-then-skeptic', prompt: 'Steelman this ' + title + ' artifact, then attack it. Approve ONLY if there is no blocking flaw against the goal.' },
+      { role: 'zero-trust-auditor', prompt: 'You are told there IS a critical correctness or security flaw in this ' + title + ' artifact. Find it; you cannot conclude "none".' },
+      { role: 'completeness-checker', prompt: 'What REQUIRED element is missing for: ' + focus + '? Reject if something essential is absent.' },
     ],
     consensusThreshold: 2,
     minConfidence: 0.6,
   });
 }
 
-// ── one phase: research gate → produce artifact → Apex gate → bounded remediation ─
-async function runPhase(context, ph, state) {
-  phase(ph.title, { focus: ph.focus });
+function clip(v, n) { const s = typeof v === 'string' ? v : JSON.stringify(v); return s.length > n ? s.slice(0, n) : s; }
 
-  // 1. Mandatory research gate (parallel; failures are tolerated).
-  log(ph.title + ': research gate (' + ph.research.length + ' questions)');
-  const research = (await parallel(
-    ph.research.map((q) => () =>
-      agent({
-        role: 'researcher',
-        prompt: 'Research question for ' + ph.title + ': ' + q + '. Project goal: ' + String(state.northstar).slice(0, 600) +
-          '. Return concise findings and any assumption updates.',
-        schema: { findings: 'array', assumptionUpdates: 'array' },
-        maxTokens: 1500,
-      }).catch((e) => ({ __odw_failed: true, error: String(e && e.message || e) }))
-    ),
-    { maxConcurrency: 4 }
-  )).filter((r) => r && !r.__odw_failed);
-
-  const buildPrompt = (extra) =>
-    'You are the ' + ph.role + ' for this phase. ' + ph.instruction +
-    '\nProject North Star: ' + String(state.northstar).slice(0, 1500) +
-    '\nResearch findings: ' + JSON.stringify(research).slice(0, 4000) +
-    '\nPrior phases: ' + JSON.stringify(Object.keys(state.artifacts)) +
-    (extra || '') +
-    '\nReturn ONLY the structured artifact.';
-
-  // 2. Produce the phase artifact.
-  let artifact = await agent({ role: ph.role, prompt: buildPrompt(''), schema: ph.schema, maxTokens: 4000 });
-
-  // 3. Apex Red Team gate, with bounded remediation (Studio Prime's 3-tier verdict
-  //    collapses to: passed = GREEN_FLAG/TECH_DEBT (proceed); not passed = BLOCKER).
-  let verdict = await apexReview(ph, artifact, state.northstar);
-  let cycle = 0;
-  const MAX_REMEDIATION = 2;
-  while (!verdict.passed && cycle < MAX_REMEDIATION) {
-    cycle++;
-    log(ph.title + ': BLOCKER verdict — remediation cycle ' + cycle + '/' + MAX_REMEDIATION, 'warn');
-    const critiques = JSON.stringify((verdict.verdicts || []).map((v) => v && v.critique).filter(Boolean)).slice(0, 2000);
-    artifact = await agent({ role: ph.role, prompt: buildPrompt('\nRESOLVE these blocking critiques from review: ' + critiques), schema: ph.schema, maxTokens: 4000 });
-    verdict = await apexReview(ph, artifact, state.northstar);
-  }
-
-  const status = verdict.passed ? 'GREEN_FLAG/TECH_DEBT' : 'BLOCKER (deferred after remediation cap)';
-  log(ph.title + ': ' + status + (cycle ? ' after ' + cycle + ' remediation cycle(s)' : ''));
-
-  state.artifacts[ph.id] = artifact;
-  state.verdicts[ph.id] = { passed: verdict.passed, status, approvals: verdict.approvals, rejections: verdict.rejections };
-
-  // 4. Checkpoint — the daemon's SQLite/WAL store makes this resumable on crash.
-  await checkpoint({ phase: ph.id, artifact, verdict: state.verdicts[ph.id] });
-  return artifact;
-}
-
-// ── the pipeline ────────────────────────────────────────────────────────────────
 async function execute(context) {
+  const T = context.tools;
   const a = args() || {};
   let northstar = a.northstar || a.brief || '';
   if (!northstar) {
-    for (const file of ['northstar.md', 'NORTHSTAR.md', 'prd.md', 'PRD.md', 'brief.md']) {
-      try {
-        const text = await context.tools.read_file(file);
-        if (text && String(text).trim()) { northstar = text; log('North Star loaded from ' + file); break; }
-      } catch { /* try next file */ }
+    for (const f of ['northstar.md', 'NORTHSTAR.md', 'prd.md', 'PRD.md', 'brief.md']) {
+      try { const t = await T.read_file(f); if (t && String(t).trim()) { northstar = t; break; } } catch { /* next */ }
     }
   }
-  if (!northstar) {
-    northstar = 'No brief was provided. Design and build a small, well-tested, well-documented utility that is clearly useful for this repository, then ship it.';
-    log('No brief found — proceeding with a safe default North Star', 'warn');
+  if (!northstar) northstar = 'Build a small, well-tested, zero-dependency Node.js command-line utility that is genuinely useful, with unit tests and an MIT license.';
+
+  const proof = {};           // phase → captured command stdout (proof-of-work)
+  const verdicts = {};        // phase → adversarial verdict
+  const state = { northstar, files: [], entry: null, testCmd: 'node --test test/' };
+
+  // ── helpers: real research / file writes / command runs ──────────────────────
+  async function research(queries) {
+    const findings = [];
+    for (const q of queries) {
+      try {
+        const hits = await T.web_search(q);
+        let detail = '';
+        if (hits && hits[0] && hits[0].url) { try { detail = (await T.web_fetch(hits[0].url)).text.slice(0, 1500); } catch { /* fetch optional */ } }
+        findings.push({ q, top: (hits || []).slice(0, 4).map((h) => h.title + ' — ' + h.url), detail });
+      } catch (e) { findings.push({ q, error: String(e.message) }); }
+    }
+    return findings;
   }
 
-  log('Studio Prime pipeline starting: 6 phases, adversarial gate per phase');
-  const state = { northstar, artifacts: {}, verdicts: {} };
-
-  for (const ph of PHASES) {
-    await runPhase(context, ph, state);
+  async function writeFiles(files) {
+    const written = [];
+    for (const f of files || []) {
+      if (!f || !f.path || typeof f.contents !== 'string') continue;
+      try { await T.write_file(f.path, f.contents); written.push(f.path); state.files.push(f.path); }
+      catch (e) { log('  write failed ' + f.path + ': ' + e.message, 'warn'); }
+    }
+    return written;
   }
 
-  // ── North Star validation gate ──────────────────────────────────────────────
-  phase('North Star Validation', {});
-  const validation = await agent({
-    role: 'northstar-validator',
-    prompt: 'Compare every North Star requirement against the produced phase artifacts and classify each as MET / PARTIALLY_MET / NOT_MET, with a one-line reason.' +
-      '\nNorth Star: ' + String(northstar).slice(0, 2000) +
-      '\nArtifacts: ' + JSON.stringify(state.artifacts).slice(0, 12000) +
-      '\nReturn the structured validation.',
-    schema: { requirements: 'array', overall: 'string', gaps: 'array' },
-    maxTokens: 4000,
-  });
-  await checkpoint({ phase: 'northstar-validation', validation });
+  async function run(cmd) {
+    try { const r = await T.run_bash(cmd); return { ok: true, stdout: String((r && r.stdout) || '').slice(0, 4000) }; }
+    catch (e) { return { ok: false, stdout: String(e.message).slice(0, 4000) }; }
+  }
 
-  const blocked = Object.entries(state.verdicts).filter(([, v]) => !v.passed).map(([k]) => k);
+  log('Studio Prime: building toward — ' + String(northstar).slice(0, 160).replace(/\s+/g, ' '));
+
+  // ════ P1 Blueprint ════════════════════════════════════════════════════════════
+  phase('P1 Blueprint');
+  const r1 = await research(['Node.js project structure best practices', 'node:test built-in test runner usage']);
+  const bp = await safeAgent('principal-architect',
+    'Plan a zero-dependency Node.js (ESM, "type":"module") project for this goal. ' +
+    'Decide the product name and shape. Return files to create now: package.json (with "scripts":{"test":"node --test test/"}, "type":"module", "license":"MIT"), a README.md, and architecture/decisions.md. ' +
+    'Goal: ' + clip(northstar, 1200) + ' Research: ' + clip(r1, 2000),
+    { projectName: 'string', entry: 'string', files: [{ path: 'string', contents: 'string' }] });
+  if (bp) { state.entry = bp.entry || state.entry; await writeFiles(bp.files); }
+  proof.blueprint = { wrote: state.files.slice() };
+  verdicts.blueprint = await gate('P1 Blueprint', 'architecture soundness, PRD alignment', bp || {}, northstar);
+
+  // ════ P2 Link ════════════════════════════════════════════════════════════════
+  phase('P2 Link');
+  const r2 = await research(['module boundaries small Node CLI', 'how to structure unit tests with node:test']);
+  const link = await safeAgent('integration-architect',
+    'Define module boundaries and the integration plan for the project. Return architecture/integration_plan.md as a file. ' +
+    'Goal: ' + clip(northstar, 800) + ' Decisions so far: ' + clip(bp, 1500) + ' Research: ' + clip(r2, 1500),
+    { files: [{ path: 'string', contents: 'string' }] });
+  if (link) await writeFiles(link.files);
+  verdicts.link = await gate('P2 Link', 'integration seams and contract completeness', link || {}, northstar);
+
+  // ════ P3 Architecture (scaffold + tests, must run) ═════════════════════════════
+  phase('P3 Architecture');
+  const r3 = await research(['writing failing unit tests first TDD node:test', 'ESM module exports patterns Node']);
+  const arch = await safeAgent('scaffolding-engineer',
+    'Scaffold the implementation files (in src/) with real exported function signatures, and test files (in test/, using node:test and node:assert) that EXERCISE those functions. ' +
+    'The source may be stubs for now. Set "entry" to the main module path. Goal: ' + clip(northstar, 1000) + ' Plan: ' + clip(link, 1200),
+    { entry: 'string', files: [{ path: 'string', contents: 'string' }] });
+  if (arch) { state.entry = arch.entry || state.entry; await writeFiles(arch.files); }
+  const t3 = await run(state.testCmd);
+  proof.architecture = { testStdout: t3.stdout.slice(0, 1500) };
+  log('P3: scaffold test run — ' + (t3.ok ? 'suite executed' : 'suite errored (expected pre-impl)'));
+  verdicts.architecture = await gate('P3 Architecture', 'strict interfaces and a runnable test suite', { files: state.files, testStdout: t3.stdout.slice(0, 800) }, northstar);
+
+  // ════ P4 Implement (fix-until-green loop) ══════════════════════════════════════
+  phase('P4 Implement');
+  const r4 = await research(['common Node.js bugs to avoid', 'input validation best practices Node']);
+  let testRun = await run(state.testCmd);
+  let pass = /(\b0 fail|# fail 0\b)/.test(testRun.stdout) && /# pass [1-9]/.test(testRun.stdout);
+  let impl = null;
+  for (let cycle = 1; cycle <= 4 && !pass; cycle++) {
+    log('P4: implement + test cycle ' + cycle + ' (suite ' + (pass ? 'green' : 'not yet green') + ')', 'warn');
+    impl = await safeAgent('implementation-engineer',
+      'Implement the source so EVERY test passes. Return the complete updated source files (path + full contents). ' +
+      'Goal: ' + clip(northstar, 900) + '\nCurrent test output:\n' + clip(testRun.stdout, 2500) + '\nResearch: ' + clip(r4, 800),
+      { files: [{ path: 'string', contents: 'string' }], notes: 'string' });
+    if (!impl || !impl.files) break;
+    await writeFiles(impl.files);
+    testRun = await run(state.testCmd);
+    pass = /# fail 0\b/.test(testRun.stdout) && /# pass [1-9]/.test(testRun.stdout);
+  }
+  proof.implement = { passed: pass, testStdout: testRun.stdout.slice(0, 2000) };
+  log('P4: tests ' + (pass ? 'GREEN' : 'not green after cycles') + '');
+  verdicts.implement = await gate('P4 Implement', 'all tests pass, logic correct, inputs validated', { passed: pass, testStdout: testRun.stdout.slice(0, 1200) }, northstar);
+
+  // ════ P5 Stylize (docs / UX polish) ════════════════════════════════════════════
+  phase('P5 Stylize');
+  const r5 = await research(['writing a good CLI --help and README', 'developer experience for small tools']);
+  const style = await safeAgent('ux-engineer',
+    'Polish the developer experience: a clear README.md (install, usage, examples), and if there is a CLI entry, a --help output. Return updated files. ' +
+    'Goal: ' + clip(northstar, 700) + ' Entry: ' + state.entry + ' Research: ' + clip(r5, 800),
+    { files: [{ path: 'string', contents: 'string' }] });
+  if (style) await writeFiles(style.files);
+  verdicts.stylize = await gate('P5 Stylize', 'clear docs and usable developer experience', style || {}, northstar);
+
+  // ════ P6 Release (run it, smoke it, hand off, leave it working) ═════════════════
+  phase('P6 Release');
+  const finalTest = await run(state.testCmd);
+  const finalPass = /# fail 0\b/.test(finalTest.stdout) && /# pass [1-9]/.test(finalTest.stdout);
+  // smoke: actually run the product
+  let smoke = { ok: false, stdout: '' };
+  if (state.entry) { smoke = await run('node ' + state.entry + ' --help'); if (!smoke.ok) smoke = await run('node ' + state.entry); }
+  const handoff = await safeAgent('release-engineer',
+    'Write HANDOFF.md: what was built, how to run it, how to test it, and any known limitations. Return it as a file. ' +
+    'Goal: ' + clip(northstar, 700) + ' Files built: ' + clip(state.files, 800) + ' Tests green: ' + finalPass,
+    { files: [{ path: 'string', contents: 'string' }] });
+  if (handoff) await writeFiles(handoff.files);
+  proof.release = { finalPass, testStdout: finalTest.stdout.slice(0, 1200), smokeOk: smoke.ok, smokeStdout: smoke.stdout.slice(0, 800) };
+  verdicts.release = await gate('P6 Release', 'product builds, tests pass, it runs, handoff complete', { finalPass, smokeOk: smoke.ok }, northstar);
+
+  // ════ North Star Validation ════════════════════════════════════════════════════
+  phase('North Star Validation');
+  let validation;
+  try {
+    validation = await safeAgent('northstar-validator',
+      'Classify each North Star requirement as MET / PARTIALLY_MET / NOT_MET against what was actually built and tested. ' +
+      'North Star: ' + clip(northstar, 1500) + '\nFiles: ' + clip(state.files, 800) + '\nTests green: ' + finalPass + '\nSmoke ran: ' + smoke.ok,
+      { requirements: [{ id: 'string', status: 'string', reason: 'string' }], overall: 'string', gaps: ['string'] });
+  } catch (e) { validation = { overall: 'UNVALIDATED', gaps: [String(e.message)] }; }
+  validation = validation || { overall: 'UNVALIDATED', gaps: [] };
+
+  const blockers = Object.entries(verdicts).filter(([, v]) => !v.passed).map(([k]) => k);
   return {
-    summary: 'Studio Prime pipeline complete across ' + PHASES.length + ' phases.',
-    phases: state.verdicts,
-    unresolvedBlockers: blocked,
+    summary: 'Studio Prime build complete. Tests ' + (finalPass ? 'GREEN' : 'NOT green') + '; product ' + (smoke.ok ? 'runs' : 'did not smoke') + '.',
+    productBuilt: finalPass,
+    filesWritten: state.files,
+    entry: state.entry,
+    proofOfWork: proof,
+    phases: verdicts,
+    unresolvedBlockers: blockers,
     northstarValidation: validation,
-    artifacts: state.artifacts,
   };
+
+  // ── inner helpers that close over state ──────────────────────────────────────
+  async function safeAgent(role, prompt, schema) {
+    try { return await agent({ role, prompt, schema, maxTokens: 6000 }); }
+    catch (e) { if (e && (e.code === 'aborted' || e.code === 'paused')) throw e; log('  ' + role + ' failed: ' + e.message, 'warn'); return null; }
+  }
+  async function gate(title, focus, artifact, ns) {
+    let v;
+    try { v = await apexReview(title, focus, artifact, ns); }
+    catch (e) { if (e && (e.code === 'aborted' || e.code === 'paused')) throw e; v = { passed: false, approvals: 0, rejections: 0 }; }
+    const status = v.passed ? 'GREEN_FLAG/TECH_DEBT' : 'BLOCKER';
+    log(title + ': ' + status);
+    await checkpoint({ phase: title, artifact: clip(artifact, 2000), passed: v.passed });
+    return { passed: v.passed, status, approvals: v.approvals, rejections: v.rejections };
+  }
 }
 
 module.exports = { execute };

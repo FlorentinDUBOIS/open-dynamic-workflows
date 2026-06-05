@@ -30,8 +30,10 @@ export async function startDaemon(options = {}) {
 
   const queue = createAgentQueue({
     maxConcurrency: config.daemon.maxConcurrency,
-    retry: { maxAttempts: 3, backoff: 'exponential' },
-    perAgentTimeout: 120,
+    retry: { maxAttempts: config.daemon.retryAttempts ?? 3, backoff: 'exponential' },
+    // Per-agent wall-clock timeout. Configurable because slow/free models can
+    // take well over the old hardcoded 120s on a large prompt.
+    perAgentTimeout: config.daemon.perAgentTimeout ?? 120,
     resolveProvider: (model) => resolveProvider(model, config, { fetchImpl: options.fetchImpl }),
     logger,
   });

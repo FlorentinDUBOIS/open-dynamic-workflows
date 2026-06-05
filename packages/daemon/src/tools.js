@@ -72,6 +72,50 @@ export function createToolExecutor(options) {
   const tools = {
     glob: async (pattern) => globWalk(cwd, String(pattern ?? '**/*')).slice(0, MAX_RESULTS),
 
+    // ── web research (read-only, no approval needed) ──────────────────────────
+    web_fetch: async (url) => {
+      const u = String(url);
+      if (!/^https?:\/\//i.test(u)) throw new Error('web_fetch: url must be http(s)');
+      const res = await fetch(u, { headers: { 'user-agent': 'odw-research/1.0' }, signal: AbortSignal.timeout(20000) });
+      if (!res.ok) throw new Error(`web_fetch ${res.status} for ${u}`);
+      const html = await res.text();
+      // strip scripts/styles/tags → readable text
+      const text = html
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&[a-z#0-9]+;/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return { url: u, text: text.slice(0, 8000) };
+    },
+
+    web_search: async (query) => {
+      // Keyless search via DuckDuckGo's HTML endpoint. Best-effort; returns
+      // {title, url, snippet}. If it ever fails, the workflow degrades to
+      // model knowledge — the research gate tolerates an empty result.
+      const q = encodeURIComponent(String(query));
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${q}`, {
+        method: 'POST',
+        headers: { 'user-agent': 'Mozilla/5.0 (odw-research)', 'content-type': 'application/x-www-form-urlencoded' },
+        body: `q=${q}`,
+        signal: AbortSignal.timeout(20000),
+      });
+      if (!res.ok) throw new Error(`web_search ${res.status}`);
+      const html = await res.text();
+      const out = [];
+      const re = /<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+      let m;
+      while ((m = re.exec(html)) && out.length < 8) {
+        let href = m[1];
+        const dd = href.match(/uddg=([^&]+)/);
+        if (dd) { try { href = decodeURIComponent(dd[1]); } catch { /* keep */ } }
+        const title = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (title && /^https?:/i.test(href)) out.push({ title, url: href });
+      }
+      return out;
+    },
+
     read_file: async (path) => {
       const abs = insideRoot(String(path));
       const stats = statSync(abs);
@@ -122,8 +166,16 @@ export function createToolExecutor(options) {
       }
       const shell = process.platform === 'win32' ? 'powershell' : 'bash';
       const flag = process.platform === 'win32' ? '-Command' : '-c';
-      const stdout = execFileSync(shell, [flag, cmd], { cwd, timeout: 60_000, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
-      return { stdout: stdout.slice(0, 100_000) };
+      try {
+        const stdout = execFileSync(shell, [flag, cmd], { cwd, timeout: 120_000, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+        return { stdout: String(stdout).slice(0, 100_000), exitCode: 0 };
+      } catch (e) {
+        // A non-zero exit (e.g. a failing test suite) is NOT a tool error — the
+        // command's output is the useful signal. Capture stdout+stderr and the
+        // exit code so callers (e.g. a fix-until-green loop) can act on it.
+        const out = String((e.stdout || '') + (e.stderr || '')).slice(0, 100_000);
+        return { stdout: out || String(e.message), exitCode: typeof e.status === 'number' ? e.status : 1, failed: true };
+      }
     },
 
     git: async (...args) => {

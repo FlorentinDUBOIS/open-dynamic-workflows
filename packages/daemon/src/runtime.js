@@ -43,6 +43,21 @@ export function createRuntime(deps) {
     if (!plan?.script) throw new Error('execWorkflow: plan.script is required');
     const workflowId = options.workflowId ?? `wf_${randomUUID().slice(0, 12)}`;
     const strategy = mergeStrategy({ ...(plan.strategy ?? {}), ...(strategyOverrides ?? {}) });
+    // Runs that skip the planning step (e.g. `odw-daemon run --script`) never get
+    // the config-derived strategy fields the planner would set, so they fall back
+    // to mergeStrategy's hardcoded defaults. Apply the configured model, safety,
+    // and git settings here as the base; explicit plan/override values still win.
+    const explicitModel = (plan.strategy?.budget && plan.strategy.budget.model) ||
+      (strategyOverrides?.budget && strategyOverrides.budget.model);
+    if (!explicitModel && config?.models?.default) {
+      strategy.budget.model = config.models.default;
+    }
+    if (config?.safety) {
+      strategy.safety = { ...strategy.safety, ...config.safety, ...(plan.strategy?.safety ?? {}), ...(strategyOverrides?.safety ?? {}) };
+    }
+    if (config?.git) {
+      strategy.git = { ...strategy.git, ...config.git, ...(plan.strategy?.git ?? {}), ...(strategyOverrides?.git ?? {}) };
+    }
 
     store.insertWorkflow({
       workflow_id: workflowId,
