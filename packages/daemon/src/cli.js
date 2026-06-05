@@ -19,7 +19,10 @@ import { DEFAULT_PORT, loadConfig, ensureHome } from './config.js';
 import { daemonPaths, spawnDetached, daemonStatusFromPidFile, stopDaemon, writePidFile, installShutdownHandlers } from './process.js';
 
 const program = new Command();
-program.name('odw-daemon').description('Local orchestration daemon for open-dynamic-workflows');
+program
+  .name('odw-daemon')
+  .description('Local orchestration daemon for open-dynamic-workflows')
+  .version('open-dynamic-workflows · rolling release', '-v, --version', 'print version info');
 
 const color = {
   ok: (s) => `\x1b[32m${s}\x1b[0m`,

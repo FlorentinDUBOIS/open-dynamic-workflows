@@ -64,7 +64,7 @@ The single environment variable the code reads is `ODW_DAEMON_PORT` (verified vi
 
 ## 5. 🧱 Tech Stack
 
-- **Node.js ≥ 20** (ESM throughout). Rationale in `architecture/decisions.md`: `p-queue` is ESM-only and the maintained SQLite prebuilds require Node 20+.
+- **Node.js ≥ 20** (ESM throughout). Rationale: `p-queue` is ESM-only and the maintained `better-sqlite3` prebuilds require Node 20+.
 - **better-sqlite3 ^11.10.0** — synchronous SQLite with prebuilt Windows/macOS/Linux binaries (no compiler needed). Pinned to the ^11 line because ^12 dropped Node 20 prebuilds.
 - **quickjs-emscripten 0.32.0** — WASM QuickJS sandbox. Pinned exactly (it is the security boundary).
 - **express ^5.2.1** + **ws ^8.21.0** — HTTP API and WebSocket events on loopback.
@@ -148,7 +148,7 @@ This is a locally-run developer tool, not a hosted service — "deployment" mean
 
 ## 12. 🧠 Architectural Decisions
 
-Distilled from `architecture/decisions.md`.
+The decisions that shaped the codebase.
 
 - **Sandbox: quickjs-emscripten (WASM QuickJS).** Alternatives: `vm2` (abandoned 2023, critical CVEs), `node:vm` (not a security boundary), `isolated-vm` (needs a native toolchain), SES (irreversible global lockdown). Chose WASM-QuickJS for true isolation with a pure-JS install. Trade-off: values cross the boundary as JSON strings. Revisit if the host needs to pass live object handles.
 - **ESM, Node ≥ 20.** Alternatives: CommonJS on Node 18. `p-queue` v9 is ESM-only and SQLite prebuilds need Node 20. Trade-off: drops Node 18. Revisit when the LTS floor moves and `node:sqlite` is stable.
@@ -179,7 +179,7 @@ From `.studio/todos.md` and `.studio/blocked.md`.
 Reading order:
 1. `README.md` — what it is and how to run it.
 2. This file — operational picture.
-3. `architecture/data_contracts.md` — the HTTP API, SQLite schema, and primitive signatures (the source of truth).
+3. `packages/daemon/schema.sql` + `packages/core/src/types.js` — the SQLite schema and the type contracts (the source of truth for state and the HTTP API).
 4. `packages/core/src/planner.js` → `script-generator.js` — how a prompt becomes a runnable script.
 5. `packages/daemon/src/sandbox.js` + `guest-prelude.js` — how the script runs and where the primitives live.
 6. `packages/daemon/src/runtime.js` — the lifecycle glue (exec, checkpoint, resume, budget).
@@ -188,9 +188,10 @@ Good first tasks (from TECH_DEBT): add a `session.idle` progress push to the Ope
 
 ## 16. 🔗 References
 
-- Requirements: `.studio/state/northstar.md`
-- Decisions: `architecture/decisions.md` · Integration: `architecture/integration_plan.md` · Contracts: `architecture/data_contracts.md`
-- Phase snapshots: `architecture/phase_snapshots/phase[1-6]_*.md`
+- State + API contracts (source of truth): `packages/daemon/schema.sql`, `packages/core/src/types.js`, `packages/daemon/src/server.js` (HTTP routes).
+- Engine internals: `packages/daemon/src/{sandbox,runtime,agent-queue,providers}.js`.
+- Runnable examples: `examples/workflows/`.
+- External docs used while building: QuickJS-emscripten, the OpenCode plugin/SDK type definitions, the Anthropic Messages API, OpenAI Chat Completions, the Ollama API, and the GitHub REST repos API.
 - Design tokens: `design-system/MASTER.md`
 - External docs used: QuickJS-emscripten (github.com/justjake/quickjs-emscripten), `@opencode-ai/plugin` & SDK type definitions, Anthropic Messages API, OpenAI Chat Completions, Ollama API, GitHub REST repos API.
 
