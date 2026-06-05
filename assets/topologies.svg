@@ -1,4 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" fill="none" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="six orchestration topologies: pipeline, map-reduce, adversarial, consensus, tree search, hybrid">
+  <style><![CDATA[
+    @keyframes flow { 0%,100%{opacity:.45} 50%{opacity:1} }
+    @keyframes accentScale { 0%,100%{transform:scale(1)} 50%{transform:scale(1.16)} }
+    .flow { animation: flow 6s ease-in-out infinite; }
+    .f1{animation-delay:0s}.f2{animation-delay:1s}.f3{animation-delay:2s}.f4{animation-delay:3s}.f5{animation-delay:4s}.f6{animation-delay:5s}
+    .accent { transform-box: fill-box; transform-origin: center; animation: accentScale 6s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce){ *{animation:none!important} }
+  ]]></style>
   <defs>
     <linearGradient id="ind" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#818cf8"/>
@@ -15,7 +23,7 @@
   <rect x="14" y="6" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="30" y="32" font-size="13" font-weight="700" fill="#6366f1">PIPELINE</text>
   <text x="30" y="156" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">ordered, dependent stages</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f1">
     <path d="M116 92 H146"/><path d="M158 92 H188"/><path d="M200 92 H230"/>
   </g>
   <g fill="#a5b4fc"><circle cx="110" cy="92" r="6"/><circle cx="152" cy="92" r="6"/><circle cx="194" cy="92" r="6"/><circle cx="236" cy="92" r="6"/></g>
@@ -24,7 +32,7 @@
   <rect x="330" y="6" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="346" y="32" font-size="13" font-weight="700" fill="#6366f1">MAP-REDUCE</text>
   <text x="346" y="156" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">split, map in parallel, reduce</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f2">
     <path d="M432 92 C 452 70, 462 70, 480 66"/><path d="M432 92 H480"/><path d="M432 92 C 452 114, 462 114, 480 118"/>
     <path d="M492 66 C 510 70, 520 70, 540 92"/><path d="M492 92 H540"/><path d="M492 118 C 510 114, 520 114, 540 92"/>
   </g>
@@ -34,31 +42,31 @@
   <rect x="646" y="6" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="662" y="32" font-size="13" font-weight="700" fill="#6366f1">ADVERSARIAL</text>
   <text x="662" y="156" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">propose, critique, fix, re-verify</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f3">
     <path d="M752 84 C 778 72, 798 72, 822 84"/>
     <path d="M822 100 C 798 112, 778 112, 752 100"/>
   </g>
   <circle cx="744" cy="92" r="7" fill="#a5b4fc"/>
-  <circle cx="830" cy="92" r="7" fill="url(#ind)"/>
+  <circle cx="830" cy="92" r="7" fill="url(#ind)" class="accent f3"/>
 
   <!-- ===== Row 2 ===== -->
   <!-- CONSENSUS (x=14, y=188) -->
   <rect x="14" y="188" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="30" y="214" font-size="13" font-weight="700" fill="#6366f1">CONSENSUS</text>
   <text x="30" y="338" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">many evaluators, weighted vote</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f4">
     <path d="M126 248 C 160 252, 175 268, 198 274"/>
     <path d="M126 274 H198"/>
     <path d="M126 300 C 160 296, 175 280, 198 274"/>
   </g>
   <g fill="#a5b4fc"><circle cx="120" cy="248" r="6"/><circle cx="120" cy="274" r="6"/><circle cx="120" cy="300" r="6"/></g>
-  <circle cx="204" cy="274" r="7" fill="url(#ind)"/>
+  <circle cx="204" cy="274" r="7" fill="url(#ind)" class="accent f4"/>
 
   <!-- TREE SEARCH (x=330, y=188) -->
   <rect x="330" y="188" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="346" y="214" font-size="13" font-weight="700" fill="#6366f1">TREE SEARCH</text>
   <text x="346" y="338" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">expand, score, prune, backtrack</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f5">
     <path d="M480 244 L452 270"/><path d="M480 244 L508 270"/>
     <path d="M452 270 L438 296"/><path d="M452 270 L466 296"/>
     <path d="M508 270 L494 296"/><path d="M508 270 L522 296"/>
@@ -71,12 +79,12 @@
   <rect x="646" y="188" width="300" height="166" rx="12" fill="none" stroke="#2a2d3a" stroke-width="1.25"/>
   <text x="662" y="214" font-size="13" font-weight="700" fill="#6366f1">HYBRID</text>
   <text x="662" y="338" font-size="11" fill="#8b8fa3" font-family="ui-sans-serif, system-ui, sans-serif">compose the patterns above</text>
-  <g stroke="url(#edge)" stroke-width="2" fill="none">
+  <g stroke="url(#edge)" stroke-width="2" fill="none" class="flow f6">
     <path d="M730 274 H760"/>
     <path d="M772 274 C 792 256, 802 256, 820 250"/>
     <path d="M772 274 C 792 292, 802 292, 820 298"/>
   </g>
   <circle cx="724" cy="274" r="6" fill="#a5b4fc"/>
-  <circle cx="766" cy="274" r="7" fill="url(#ind)"/>
+  <circle cx="766" cy="274" r="7" fill="url(#ind)" class="accent f6"/>
   <g fill="#a5b4fc"><circle cx="826" cy="250" r="6"/><circle cx="826" cy="298" r="6"/></g>
 </svg>

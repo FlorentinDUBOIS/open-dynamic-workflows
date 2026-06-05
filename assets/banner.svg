@@ -1,4 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="880" height="240" viewBox="0 0 880 240" fill="none" role="img" aria-label="open dynamic workflows">
+  <style><![CDATA[
+    .nodePulse { transform-box: fill-box; transform-origin: center; }
+    @keyframes agentPulse { 0%,30%{transform:scale(1)} 40%{transform:scale(1.16)} 55%,100%{transform:scale(1)} }
+    @keyframes agentFill  { 0%,30%{fill:#a5b4fc} 42%{fill:#c7d2fe} 62%,100%{fill:#a5b4fc} }
+    @keyframes verifyPop  { 0%,68%{transform:scale(1)} 75%{transform:scale(1.13)} 88%,100%{transform:scale(1)} }
+    @keyframes coordBreath{ 0%,100%{opacity:.35} 50%{opacity:.7} }
+    @keyframes ripple     { 0%,68%{opacity:0;transform:scale(.6)} 76%{opacity:.5;transform:scale(1)} 100%{opacity:0;transform:scale(1.9)} }
+    .agent    { animation: agentPulse 6s cubic-bezier(0.34,1.3,0.64,1) infinite, agentFill 6s ease-in-out infinite; }
+    .agent.a2 { animation-delay:.18s,.18s } .agent.a3 { animation-delay:.36s,.36s }
+    .verifyCore { animation: verifyPop 6s cubic-bezier(0.34,1.2,0.64,1) infinite; }
+    .verifyRipple { transform-box: fill-box; transform-origin: center; animation: ripple 6s ease-out infinite; }
+    .coordRing { animation: coordBreath 3s ease-in-out infinite; }
+    @keyframes pktOn { 0%,100%{opacity:.9} }
+    .pkt { animation: pktOn 6s infinite; }
+    @media (prefers-reduced-motion: reduce){ *{animation:none!important} [data-motion]{display:none!important} }
+  ]]></style>
   <defs>
     <linearGradient id="ind" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#818cf8"/>
@@ -10,7 +26,7 @@
     </linearGradient>
   </defs>
 
-  <!-- orchestration graph: one coordinator fanning out to a verified result -->
+  <!-- base graph (always drawn — static fallback) -->
   <g stroke="url(#edge)" stroke-width="2.5" fill="none">
     <path d="M150 120 C 210 60, 250 60, 300 70"/>
     <path d="M150 120 C 210 120, 250 120, 300 120"/>
@@ -20,17 +36,34 @@
     <path d="M340 170 C 400 160, 420 130, 470 120"/>
   </g>
 
+  <!-- travelling data packets (overlay, motion-only; hidden at rest) -->
+  <g stroke="#c7d2fe" stroke-width="3" fill="none" stroke-linecap="round" opacity="0" class="pkt" data-motion="1">
+    <path d="M150 120 C 210 60, 250 60, 300 70" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.34;1" values="100;0;0" keySplines="0.4 0 0.2 1;0 0 1 1"/></path>
+    <path d="M150 120 C 210 120, 250 120, 300 120" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0.18s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.34;1" values="100;0;0" keySplines="0.4 0 0.2 1;0 0 1 1"/></path>
+    <path d="M150 120 C 210 180, 250 180, 300 170" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0.36s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.34;1" values="100;0;0" keySplines="0.4 0 0.2 1;0 0 1 1"/></path>
+    <path d="M340 70 C 400 80, 420 110, 470 120" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.42;0.72;1" values="100;100;0;0" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1"/></path>
+    <path d="M340 120 C 400 120, 420 120, 470 120" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0.12s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.42;0.72;1" values="100;100;0;0" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1"/></path>
+    <path d="M340 170 C 400 160, 420 130, 470 120" pathLength="100" stroke-dasharray="14 86" stroke-dashoffset="100">
+      <animate attributeName="stroke-dashoffset" begin="0.24s" dur="6s" repeatCount="indefinite" calcMode="spline" keyTimes="0;0.42;0.72;1" values="100;100;0;0" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1"/></path>
+  </g>
+
   <!-- coordinator -->
   <circle cx="150" cy="120" r="20" fill="url(#ind)"/>
-  <circle cx="150" cy="120" r="20" fill="none" stroke="#c7d2fe" stroke-width="1.5" opacity="0.6"/>
+  <circle cx="150" cy="120" r="20" fill="none" stroke="#c7d2fe" stroke-width="1.5" opacity="0.6" class="coordRing"/>
 
   <!-- parallel agents -->
-  <circle cx="320" cy="70" r="13" fill="#a5b4fc"/>
-  <circle cx="320" cy="120" r="13" fill="#a5b4fc"/>
-  <circle cx="320" cy="170" r="13" fill="#a5b4fc"/>
+  <circle cx="320" cy="70" r="13" fill="#a5b4fc" class="nodePulse agent a1"/>
+  <circle cx="320" cy="120" r="13" fill="#a5b4fc" class="nodePulse agent a2"/>
+  <circle cx="320" cy="170" r="13" fill="#a5b4fc" class="nodePulse agent a3"/>
 
   <!-- verified synthesis -->
-  <circle cx="490" cy="120" r="18" fill="url(#ind)"/>
+  <circle cx="490" cy="120" r="18" fill="none" stroke="#22c55e" stroke-width="2" opacity="0" class="verifyRipple" data-motion="1"/>
+  <circle cx="490" cy="120" r="18" fill="url(#ind)" class="nodePulse verifyCore"/>
   <path d="M482 120 l5 6 l11 -13" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 
   <!-- wordmark -->
