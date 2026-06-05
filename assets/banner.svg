@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="240" viewBox="0 0 880 240" fill="none" role="img" aria-label="open dynamic workflows">
+  <defs>
+    <linearGradient id="ind" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+
+  <!-- orchestration graph: one coordinator fanning out to a verified result -->
+  <g stroke="url(#edge)" stroke-width="2.5" fill="none">
+    <path d="M150 120 C 210 60, 250 60, 300 70"/>
+    <path d="M150 120 C 210 120, 250 120, 300 120"/>
+    <path d="M150 120 C 210 180, 250 180, 300 170"/>
+    <path d="M340 70 C 400 80, 420 110, 470 120"/>
+    <path d="M340 120 C 400 120, 420 120, 470 120"/>
+    <path d="M340 170 C 400 160, 420 130, 470 120"/>
+  </g>
+
+  <!-- coordinator -->
+  <circle cx="150" cy="120" r="20" fill="url(#ind)"/>
+  <circle cx="150" cy="120" r="20" fill="none" stroke="#c7d2fe" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- parallel agents -->
+  <circle cx="320" cy="70" r="13" fill="#a5b4fc"/>
+  <circle cx="320" cy="120" r="13" fill="#a5b4fc"/>
+  <circle cx="320" cy="170" r="13" fill="#a5b4fc"/>
+
+  <!-- verified synthesis -->
+  <circle cx="490" cy="120" r="18" fill="url(#ind)"/>
+  <path d="M482 120 l5 6 l11 -13" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- wordmark -->
+  <text x="560" y="112" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30" font-weight="700" fill="#6366f1">open dynamic</text>
+  <text x="560" y="150" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30" font-weight="700" fill="#818cf8">workflows</text>
+  <text x="561" y="178" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13" fill="#8b8fa3">the script is the orchestrator — not the model</text>
+</svg>
