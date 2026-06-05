@@ -5,7 +5,7 @@
  */
 
 import PQueue from 'p-queue';
-import { extractJson, compileSchema } from 'odw-core';
+import { extractJson, compileSchema, normalizeSchema } from 'odw-core';
 
 /** Error codes classified as retryable. */
 export const RETRYABLE = new Set(['rate_limit', 'timeout', 'service_unavailable']);
@@ -66,8 +66,22 @@ export function createAgentQueue(options) {
     signal?.addEventListener('abort', onAbort, { once: true });
     const timer = setTimeout(() => controller.abort(), perAgentTimeoutMs);
 
+    // Schema handling that works across ALL providers (including free models
+    // with no native structured-output support): normalize the schema, embed
+    // it in the prompt as an instruction, and parse the result with the
+    // tolerant extractJson cascade. Native structured-output (response_format /
+    // output_config / format) is only requested when explicitly enabled, since
+    // many free/open models reject it.
+    let effectiveJob = { ...job, model };
+    if (job.schema) {
+      const schema = normalizeSchema(job.schema);
+      effectiveJob.prompt =
+        `${job.prompt}\n\nReturn ONLY a JSON object matching this schema (no prose, no markdown fences):\n${JSON.stringify(schema)}`;
+      effectiveJob.schema = options.nativeStructuredOutput ? schema : undefined;
+    }
+
     try {
-      const response = await provider.call({ ...job, model }, { signal: controller.signal });
+      const response = await provider.call(effectiveJob, { signal: controller.signal });
       options.onUsage?.(job.model, response.tokensInput, response.tokensOutput);
 
       let output = response.text;

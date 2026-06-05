@@ -70,7 +70,10 @@ export function loadConfig() {
   let fromFile = {};
   if (existsSync(configPath)) {
     try {
-      fromFile = JSON.parse(readFileSync(configPath, 'utf8'));
+      // Strip a UTF-8 BOM if present — editors and PowerShell on Windows often
+      // write one, and JSON.parse rejects a leading BOM.
+      const raw = readFileSync(configPath, 'utf8');
+      fromFile = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
     } catch {
       // malformed config: keep defaults rather than crash the daemon
       fromFile = {};

@@ -37,6 +37,14 @@ test('config: ODW_HOME redirect + file merge + env port override', () => {
   rmSync(join(HOME, 'config.json'));
 });
 
+test('config: a UTF-8 BOM in config.json does not defeat parsing (Windows/PowerShell)', () => {
+  // PowerShell Set-Content -Encoding utf8 prepends a BOM; JSON.parse rejects it.
+  writeFileSync(join(HOME, 'config.json'), '﻿' + JSON.stringify({ models: { default: 'minimax-m3-free' } }), 'utf8');
+  const config = loadConfig();
+  assert.equal(config.models.default, 'minimax-m3-free', 'BOM-prefixed config must still load');
+  rmSync(join(HOME, 'config.json'));
+});
+
 test('config: env fallback for API keys', () => {
   process.env.OPENAI_API_KEY = 'env-key';
   assert.equal(apiKeyFor(defaultConfig(), 'openai'), 'env-key');

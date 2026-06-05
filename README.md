@@ -63,12 +63,16 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Quick start
 
+Clone, install, and let the setup script write a starter config and put the daemon on your PATH. Works the same on macOS, Linux, and Windows (PowerShell or cmd).
+
 ```bash
-npm install -g odw-daemon
-odw-daemon start
+git clone https://github.com/Suraj1235/open-dynamic-workflows
+cd open-dynamic-workflows
+npm install
+npm run setup
 ```
 
-Point it at a model by writing `~/.odw/config.json`:
+`npm run setup` creates `~/.odw/config.json`. Add one key and you're done:
 
 ```json
 {
@@ -77,17 +81,20 @@ Point it at a model by writing `~/.odw/config.json`:
 }
 ```
 
-No cloud key? Run a local model and pay nothing:
+No cloud key? Run a local model and pay nothing — no key needed at all:
 
 ```json
 { "models": { "default": "ollama:llama3" } }
 ```
 
-Then drive it straight from a shell — no editor required:
+Then drive it straight from a shell, no editor required:
 
 ```bash
+odw-daemon start
 odw-daemon run --prompt "workflow: find every TODO that hides a real bug" --cwd ./my-project
 ```
+
+Prefer not to install globally? Every command also runs from the repo: `npm start`, `npm run status`, `npm run odw -- run --prompt "..."`.
 
 ```
 plan

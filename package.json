@@ -11,7 +11,12 @@
     "test": "npm test --workspaces --if-present",
     "coverage": "npm run coverage --workspaces --if-present",
     "lint": "eslint .",
-    "audit:high": "npm audit --audit-level=high"
+    "audit:high": "npm audit --audit-level=high",
+    "odw": "node packages/daemon/src/cli.js",
+    "start": "node packages/daemon/src/cli.js start",
+    "stop": "node packages/daemon/src/cli.js stop",
+    "status": "node packages/daemon/src/cli.js status",
+    "setup": "node scripts/setup.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
