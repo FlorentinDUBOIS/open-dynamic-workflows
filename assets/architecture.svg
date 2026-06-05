@@ -18,19 +18,24 @@
 
   <!-- spine edges between columns -->
   <g stroke="url(#edge)" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
-    <path d="M210 210 C 270 210, 290 210, 300 210"/>
-    <path d="M470 178 C 540 150, 560 110, 626 92"/>
-    <path d="M470 210 C 540 210, 560 210, 626 210"/>
-    <path d="M470 242 C 540 270, 560 300, 626 318"/>
-    <path d="M778 92  C 880 110, 900 170, 962 200"/>
-    <path d="M778 210 C 880 210, 900 208, 962 206"/>
-    <path d="M778 318 C 880 300, 900 250, 962 224"/>
+    <!-- you → script -->
+    <path d="M210 210 C 260 210, 280 210, 300 210"/>
+    <!-- script → fan of agents -->
+    <path d="M470 210 C 540 150, 560 110, 626 92"/>
+    <path d="M470 210 C 540 130, 560 151, 626 151"/>
+    <path d="M470 210 H626"/>
+    <path d="M470 210 C 540 290, 560 269, 626 269"/>
+    <path d="M470 210 C 540 270, 560 300, 626 318"/>
+    <!-- agents → verify (converge) -->
+    <path d="M654 92  C 760 110, 880 180, 994 204"/>
+    <path d="M654 210 C 760 210, 880 210, 994 210"/>
+    <path d="M654 318 C 760 300, 880 240, 994 216"/>
   </g>
 
   <!-- COL 1 — YOU -->
   <g>
-    <rect x="40" y="186" width="170" height="48" rx="8" fill="none" stroke="#6366f1" stroke-width="1.5"/>
-    <text x="58" y="215" font-size="15" fill="#6366f1">workflow: audit auth</text>
+    <rect x="36" y="186" width="178" height="48" rx="8" fill="none" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="125" y="215" font-size="13" fill="#6366f1" text-anchor="middle">workflow: audit auth</text>
     <text x="125" y="276" font-size="12" fill="#8b8fa3" text-anchor="middle" letter-spacing="1">YOU</text>
   </g>
 
