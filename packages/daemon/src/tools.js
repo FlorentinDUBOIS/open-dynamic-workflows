@@ -7,7 +7,7 @@
  * they fail with a clear message (platform plugins mediate approvals).
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, realpathSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, resolve, relative, dirname, sep } from 'node:path';
 
@@ -23,11 +23,36 @@ export function createToolExecutor(options) {
   const cwd = resolve(options.cwd ?? process.cwd());
   const safety = options.safety;
 
+  const realRoot = (() => {
+    try {
+      return realpathSync(cwd);
+    } catch {
+      return cwd;
+    }
+  })();
+
   const insideRoot = (p) => {
     const abs = resolve(cwd, p);
     const rel = relative(cwd, abs);
     if (rel.startsWith('..') || rel.includes(`..${sep}`)) {
       throw new Error(`path escapes the workflow root: ${p}`);
+    }
+    // Symlink containment: resolve the deepest existing ancestor and re-check.
+    let probe = abs;
+    while (!existsSync(probe)) {
+      const parent = dirname(probe);
+      if (parent === probe) break;
+      probe = parent;
+    }
+    try {
+      const real = realpathSync(probe);
+      const realRel = relative(realRoot, real);
+      if (realRel.startsWith('..') || realRel.includes(`..${sep}`)) {
+        throw new Error(`path escapes the workflow root via symlink: ${p}`);
+      }
+    } catch (error) {
+      if (/escapes the workflow root/.test(String(error.message))) throw error;
+      // realpath failure on exotic paths: fall through to the lexical check above
     }
     return abs;
   };

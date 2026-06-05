@@ -420,6 +420,41 @@ test('sandbox: full primitive surface works inside the guest', async () => {
   assert.equal(seen.checkpoints.length, 1);
 });
 
+test('sandbox: verify() modes differ — errored critics sink consensus but not adversarial', async () => {
+  // 3 critics: one approves confidently, one rejects confidently, one errors (confidence 0).
+  let call = 0;
+  const sandbox = await createSandbox({
+    hostBridges: {
+      agent: async () => {
+        call++;
+        if (call % 3 === 1) return { approved: true, confidence: 0.9, critique: '', rejectedItems: ['itemA'] };
+        if (call % 3 === 2) return { approved: false, confidence: 0.9, critique: 'reject', rejectedItems: ['itemB'] };
+        throw new Error('critic crashed'); // becomes approved:false, confidence:0 in-guest
+      },
+    },
+  });
+  const script = `
+    async function execute() {
+      const critics = [{role:"c",prompt:"one"},{role:"c",prompt:"two"},{role:"c",prompt:"three"}];
+      const adversarial = await verify({ target: [1], mode: "adversarial", critics, consensusThreshold: 2, minConfidence: 0.5 });
+      const consensus  = await verify({ target: [1], mode: "consensus",  critics, consensusThreshold: 2, minConfidence: 0.5 });
+      return {
+        advPassed: adversarial.passed, advRejections: adversarial.rejections,
+        conPassed: consensus.passed, conApprovals: consensus.approvals,
+        rejectedItems: adversarial.rejectedItems,
+      };
+    }
+    module.exports = { execute };
+  `;
+  const result = await sandbox.runScript(script);
+  sandbox.dispose();
+  assert.equal(result.advPassed, true, 'adversarial survives: only 1 confident rejection < threshold 2');
+  assert.equal(result.advRejections, 1);
+  assert.equal(result.conPassed, false, 'consensus fails: only 1 confident approval < threshold 2');
+  assert.equal(result.conApprovals, 1);
+  assert.deepEqual(result.rejectedItems.sort(), ['itemA', 'itemB']);
+});
+
 test('sandbox: no fs/process/require escape hatches exist', async () => {
   const sandbox = await createSandbox({ hostBridges: { agent: async () => ({}) } });
   const probes = [

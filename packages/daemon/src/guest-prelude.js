@@ -122,14 +122,23 @@ function verify(config) {
   return parallel(calls).then(function (verdicts) {
     var confident = verdicts.filter(function (v) { return (v.confidence || 0) >= minConfidence; });
     var approvals = confident.filter(function (v) { return v.approved; }).length;
-    var passed = mode === "consensus"
-      ? approvals >= threshold
-      : approvals >= threshold; // adversarial: target survives if ≥ threshold critics fail to reject
+    var rejections = confident.filter(function (v) { return !v.approved; }).length;
+    // consensus: needs a positive quorum of confident approvals.
+    // adversarial: target survives unless a quorum of confident critics REJECTS it
+    //   (an errored/unconfident critic cannot sink an adversarial pass, but does
+    //    weaken a consensus pass — that asymmetry is the point of the two modes).
+    var passed = mode === "consensus" ? approvals >= threshold : rejections < threshold;
+    var rejectedItems = [];
+    confident.forEach(function (v) {
+      (v.rejectedItems || []).forEach(function (item) { rejectedItems.push(item); });
+    });
     return {
       passed: passed,
       mode: mode,
       approvals: approvals,
+      rejections: rejections,
       threshold: threshold,
+      rejectedItems: rejectedItems,
       verdicts: verdicts,
       target: config.target
     };
