@@ -275,6 +275,22 @@ test('queue: schema-invalid output retries (re-prompt) up to budget', async () =
   assert.deepEqual(result.output, { n: 1 });
 });
 
+test('queue: self-correction — the retry prompt carries the validation error + bad output', async () => {
+  const prompts = [];
+  const queue = queueWith(async (job) => {
+    prompts.push(job.prompt);
+    return prompts.length < 2
+      ? { text: '{"wrong": "shape"}', tokensInput: 1, tokensOutput: 1 }
+      : { text: '{"n": 7}', tokensInput: 1, tokensOutput: 1 };
+  });
+  const result = await queue.executeAgent({ model: 'm', prompt: 'do the thing', schema: { n: 'number' } });
+  assert.deepEqual(result.output, { n: 7 });
+  // first prompt is clean; second must reference the rejection + the prior bad output
+  assert.ok(!/was rejected/i.test(prompts[0]));
+  assert.match(prompts[1], /was rejected/i);
+  assert.match(prompts[1], /wrong/); // includes the bad output snippet
+});
+
 test('queue: per-agent timeout classifies as timeout', async () => {
   const queue = queueWith(
     (job, { signal }) =>
@@ -345,6 +361,18 @@ test('tools: glob/read/search work read-only; write gated; escape blocked', asyn
   assert.match(written.written, /new\.txt/);
   assert.equal(readFileSync(join(root, 'out', 'new.txt'), 'utf8'), 'hello');
 
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('tools: blocked commands are caught case-insensitively (Windows + POSIX)', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'odw-blocked-'));
+  const exec = createToolExecutor({
+    cwd: root,
+    safety: { requireApprovalFor: [], autoApproveReadOnly: true, dryRun: false, blockedCommands: ['rm -rf /', 'Remove-Item -Recurse -Force', 'format '] },
+  });
+  await assert.rejects(() => exec({ tool: 'run_bash', args: ['rm -RF / --no-preserve-root'] }), /blocked command/);
+  await assert.rejects(() => exec({ tool: 'run_bash', args: ['remove-item -recurse -force C:\\\\'] }), /blocked command/);
+  await assert.rejects(() => exec({ tool: 'run_bash', args: ['FORMAT C:'] }), /blocked command/);
   rmSync(root, { recursive: true, force: true });
 });
 

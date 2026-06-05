@@ -88,7 +88,8 @@ export function extractJson(text) {
   if (balanced) candidates.push(balanced);
 
   for (const candidate of candidates) {
-    for (const variant of [candidate, repairLight(candidate)]) {
+    for (const variant of [candidate, repairLight(candidate), repairAggressive(candidate)]) {
+      if (variant === undefined) continue;
       try {
         return JSON.parse(variant);
       } catch {
@@ -129,4 +130,20 @@ function firstBalanced(text) {
 /** Remove trailing commas before } or ]. */
 function repairLight(text) {
   return text.replace(/,\s*([}\]])/g, '$1');
+}
+
+/**
+ * Best-effort repair for weaker models: trailing commas, single-quoted strings,
+ * unquoted object keys, and Python-style True/False/None. Conservative — it
+ * only runs as a last resort after strict parses fail.
+ */
+function repairAggressive(text) {
+  if (typeof text !== 'string') return undefined;
+  let out = text.replace(/,\s*([}\]])/g, '$1'); // trailing commas
+  // single-quoted strings → double-quoted (only when no double quotes inside)
+  out = out.replace(/'([^'"\\]*)'/g, '"$1"');
+  // unquoted keys: {key: ...} or , key: ... → quote the key
+  out = out.replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)\s*:/g, '$1"$2":');
+  out = out.replace(/\bTrue\b/g, 'true').replace(/\bFalse\b/g, 'false').replace(/\bNone\b/g, 'null');
+  return out;
 }

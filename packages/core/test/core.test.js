@@ -162,6 +162,11 @@ test('script-generator: output is valid JS with the documented shape', () => {
   assert.match(src, /verify\(\{/);
   assert.match(src, /checkpoint\(/);
   assert.match(src, /maxConcurrency: 16/);
+  // fan-out must be per-item resilient: each agent catches its own failure and
+  // failed items are filtered out rather than rejecting the whole batch
+  assert.match(src, /__odw_failed/);
+  assert.match(src, /\.catch\(/);
+  assert.match(src, /_ok = .*_raw\.filter/);
   // must be syntactically valid
   new Function(src);
 });
@@ -212,6 +217,16 @@ test('extractJson: direct, fenced, embedded, trailing-comma', () => {
   assert.deepEqual(extractJson('```json\n{"a": 1,}\n```'), { a: 1 });
   assert.equal(extractJson('no json here at all'), undefined);
   assert.equal(extractJson(undefined), undefined);
+});
+
+test('extractJson: tolerates weak-model output (single quotes, unquoted keys, Python literals)', () => {
+  assert.deepEqual(extractJson("{'a': 1, 'b': 'two'}"), { a: 1, b: 'two' });
+  assert.deepEqual(extractJson('{findings: [], confidence: 0.9}'), { findings: [], confidence: 0.9 });
+  assert.deepEqual(extractJson('{"ok": True, "bad": False, "x": None}'), { ok: true, bad: false, x: null });
+  assert.deepEqual(
+    extractJson('Sure! Here is the result:\n{approved: True, confidence: 0.8,}\nLet me know.'),
+    { approved: true, confidence: 0.8 }
+  );
 });
 
 // ── planner (end-to-end, no LLM) ─────────────────────────────────────────────

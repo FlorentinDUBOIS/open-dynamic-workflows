@@ -255,14 +255,40 @@ program
     console.log(`${color.ok('▶')} workflow ${workflowId} running`);
 
     if (opts.wait === false) return;
-    const result = await fetch(`http://127.0.0.1:${port}/workflows/${workflowId}/result?wait`);
-    const body = await result.json();
-    if (body.status === 'completed') {
+
+    // Poll the record with short, resilient requests (a single long-held
+    // connection is fragile over multi-minute runs). Show live progress, then
+    // the final result or a clear failure reason — never make the user open a log.
+    const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
+    let record;
+    let lastLine = '';
+    for (;;) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/workflows/${workflowId}`, { signal: AbortSignal.timeout(8000) });
+        record = await r.json();
+      } catch {
+        await new Promise((res) => setTimeout(res, 2000));
+        continue;
+      }
+      const line = `  ${record.completed_agents ?? 0} done / ${record.failed_agents ?? 0} failed`;
+      if (line !== lastLine) {
+        process.stdout.write(`\r${color.dim(line)}        `);
+        lastLine = line;
+      }
+      if (TERMINAL.has(record.status)) break;
+      await new Promise((res) => setTimeout(res, 2000));
+    }
+    process.stdout.write('\n');
+
+    if (record.status === 'completed') {
+      const res = await fetch(`http://127.0.0.1:${port}/workflows/${workflowId}/result`);
+      const body = await res.json();
       console.log(`${color.ok('✓')} completed`);
       console.log(JSON.stringify(body.result, null, 2));
     } else {
-      console.error(`${color.err('✗')} ended with status: ${body.status}`);
-      if (body.result?.error) console.error(color.dim(body.result.error));
+      console.error(`${color.err('✗')} workflow ${record.status}`);
+      if (record.error) console.error(`  ${color.err('reason:')} ${record.error}`);
+      else console.error(color.dim(`  (no reason recorded — see logs: odw-daemon logs)`));
       process.exitCode = 1;
     }
   });

@@ -109,7 +109,7 @@ The daemon logs newline-delimited JSON; `odw-daemon logs --follow` tails it. For
 
 ## 8. 🧪 Testing & Quality
 
-- **81+ tests pass** across six workspaces (core 26, daemon 39, opencode 9, codex 4, vscode 3, antigravity 1).
+- **86 tests pass** across six workspaces (core 27, daemon 42, opencode 9, codex 4, vscode 3, antigravity 1).
 - **Coverage:** core **96.82%** lines, daemon **91.52%** lines, both over the enforced 80% gate (`c8 --check-coverage --lines 80`).
 - **Test pyramid:** unit (pure functions, providers with injected `fetch`, sandbox isolation), integration (a real HTTP daemon against an in-process mock model — plan → exec → result, WebSocket replay, stop-control, and an explicit **crash-resume test** asserting cached nodes never re-run), and shipped-example execution.
 - **CI** (`.github/workflows/ci.yml`): `test` on a 2×2 matrix (Ubuntu + Windows, Node 20 + 22), `lint`, and `security` (`npm audit --audit-level=high` + a secret-pattern scan). All green at handoff with **0 vulnerabilities**.
@@ -139,6 +139,8 @@ This is a locally-run developer tool, not a hosted service — "deployment" mean
 ## 11. 🔧 Operations
 
 - **Config:** `~/.odw/config.json` (see `.env.example` and §4). Holds `daemon` (port, concurrency, log level), `apiKeys` (per provider), `models` (planning / default / fallback), `budget`, `safety`, `git`, and optional `baseURLs` for OpenAI-compatible endpoints.
+- **OpenAI-compatible routing:** set `baseURLs.default` + `apiKeys.default` to use OpenCode Zen / Azure / vLLM / LM Studio / Groq with any model id; or `baseURLs.<name>` + a `name:model` model id for a named endpoint. Routing: `claude-*`→Anthropic, `gpt-*`/`o*`→OpenAI, `ollama:*`→Ollama, `name:model`→`baseURLs.name`, else→`baseURLs.default`.
+- **Reading a failure:** failed runs surface the reason at the top level — `odw-daemon status` / `GET /workflows/:id` include an `error` field, and `odw-daemon run` prints `reason:` on failure. `odw-daemon logs` has the full detail. Note free/small models occasionally return malformed JSON; the agent queue self-corrects by re-prompting with the validation error, but a model that never returns valid JSON will fail the run with a clear `did not match the required JSON shape` reason.
 - **Environment variables:** `ODW_DAEMON_PORT` (port override), `ODW_HOME` (data dir), and provider key fallbacks `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`.
 - **Secrets:** keys live only in the local config or the environment. They are never logged, never written into workflow/journal rows, and never returned in HTTP errors; the logger redacts key-shaped strings.
 - **Logs:** `~/.odw/logs/daemon.log`, newline-delimited JSON with `timestamp`, `level`, `message`.

@@ -2,6 +2,15 @@
 
 This project does not use version numbers. Entries are marked by milestone.
 
+## Reliability & polish pass
+
+- **Self-correcting agent retries** — when a model returns malformed or schema-invalid JSON, the retry now re-prompts with the exact validation error and the previous bad output, so weaker/free models recover instead of failing the run.
+- **More tolerant JSON extraction** — single-quoted strings, unquoted keys, Python-style `True/False/None`, and leading prose are now repaired before parsing.
+- **Clear failure reasons** — failed runs surface the cause at the top level (`odw-daemon status`, `GET /workflows/:id`, and `odw-daemon run` print `reason:`). Raw QuickJS/WASM aborts are wrapped instead of leaking into the terminal.
+- **Resilient `run`** — replaced the single long-held result connection with short polling that shows live progress; no more dropped multi-minute waits.
+- **Windows-aware safety** — default `blockedCommands` now include destructive PowerShell/cmd patterns, matched case-insensitively.
+- **Docs** — documented `baseURLs.default` for any OpenAI-compatible endpoint; clarified install-from-GitHub (and the unrelated npm name); corrected test counts.
+
 ## Initial public release
 
 The first working cut of open-dynamic-workflows.

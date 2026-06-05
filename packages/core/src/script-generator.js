@@ -70,15 +70,23 @@ function emitTask(task, roleById, strategy) {
     const itemsExpr = sourceField
       ? `(results[${JSON.stringify(sourceTask)}] && results[${JSON.stringify(sourceTask)}].${sourceField}) || []`
       : `results[${JSON.stringify(sourceTask)}] || []`;
+    const v = sanitizeKey(task.id);
     lines.push(`  {`);
     lines.push(`    const items = ${itemsExpr};`);
     lines.push(`    log('${phaseName}: fanning out over ' + items.length + ' items');`);
-    lines.push(`    results[${JSON.stringify(task.id)}] = await parallel(`);
+    // Per-item resilience: a single flaky agent must not sink the whole batch.
+    // Each call catches its own failure into a sentinel; we keep the successes
+    // and report how many items dropped (matches how resilient swarms behave).
+    lines.push(`    const ${v}_raw = await parallel(`);
     lines.push(`      items.map((item) => () => ${baseAgentCall(
       `${JSON.stringify(task.description + ' Item: ')} + JSON.stringify(item)`
-    )}),`);
+    )}.catch((e) => ({ __odw_failed: true, error: String((e && e.message) || e) }))),`);
     lines.push(`      { maxConcurrency: ${strategy.concurrency.max} }`);
     lines.push(`    );`);
+    lines.push(`    const ${v}_ok = ${v}_raw.filter((r) => !(r && r.__odw_failed));`);
+    lines.push(`    const ${v}_dropped = ${v}_raw.length - ${v}_ok.length;`);
+    lines.push(`    if (${v}_dropped > 0) log('${phaseName}: ' + ${v}_dropped + '/' + ${v}_raw.length + ' items failed and were dropped', 'warn');`);
+    lines.push(`    results[${JSON.stringify(task.id)}] = ${v}_ok;`);
     lines.push(`  }`);
   } else if (task.type === 'verification') {
     const upstream = task.dependencies[0] ?? 'work';

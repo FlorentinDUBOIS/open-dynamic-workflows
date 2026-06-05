@@ -63,6 +63,8 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Quick start
 
+> **Install from GitHub** — this is not on the npm registry yet, so install by cloning. (Heads up: an unrelated package happens to sit at the name `open-dynamic-workflows` on npm — don't `npm install` that; it isn't this project.)
+
 Clone, install, and let the setup script write a starter config and put the daemon on your PATH. Works the same on macOS, Linux, and Windows (PowerShell or cmd).
 
 ```bash
@@ -86,6 +88,18 @@ No cloud key? Run a local model and pay nothing — no key needed at all:
 ```json
 { "models": { "default": "ollama:llama3" } }
 ```
+
+**Any OpenAI-compatible endpoint** works too — OpenCode Zen, Azure OpenAI, vLLM, LM Studio, Together, Groq. Point `baseURLs.default` at it and put the key under `apiKeys.default`:
+
+```json
+{
+  "baseURLs": { "default": "https://opencode.ai/zen/v1" },
+  "apiKeys":  { "default": "your-key" },
+  "models":   { "default": "minimax-m3-free" }
+}
+```
+
+Model routing is automatic: `claude-*` → Anthropic, `gpt-*`/`o*` → OpenAI, `ollama:*` → local Ollama, `provider:model` → a named `baseURLs.<provider>`, and anything else → `baseURLs.default`. So you can run entirely on a free model with no cloud spend.
 
 Then drive it straight from a shell, no editor required:
 

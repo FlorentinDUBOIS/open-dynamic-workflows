@@ -56,7 +56,13 @@ export function defaultConfig() {
       requireApprovalFor: ['write_file', 'run_bash', 'git_commit'],
       autoApproveReadOnly: true,
       dryRun: false,
-      blockedCommands: ['rm -rf /', 'sudo ', 'chmod -R 777 /', 'mkfs', 'dd if='],
+      blockedCommands: [
+        // POSIX
+        'rm -rf /', 'rm -rf ~', 'sudo ', 'chmod -R 777 /', 'mkfs', 'dd if=', ':(){', '> /dev/sda',
+        // Windows (run_bash routes to PowerShell on win32)
+        'Remove-Item -Recurse -Force', 'rd /s', 'rmdir /s', 'del /f', 'del /q', 'format ', 'diskpart',
+        'Format-Volume', 'Clear-Disk', 'reg delete', 'Set-ExecutionPolicy',
+      ],
     },
     git: { autoCreateBranch: true, branchPrefix: 'odw/', commitCheckpoints: false },
     baseURLs: {},

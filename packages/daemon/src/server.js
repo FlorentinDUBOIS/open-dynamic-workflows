@@ -65,9 +65,20 @@ export function createServer(deps) {
   app.get('/workflows/:id', asyncRoute(async (req, res) => {
     const row = store.getWorkflow(req.params.id);
     if (!row) throw Object.assign(new Error('workflow not found'), { status: 404, code: 'not_found' });
-    const { compiled_script, execution_strategy, ...summary } = row;
+    const { compiled_script, execution_strategy, result, ...summary } = row;
+    // Surface a failure reason at the top level so `status` / the dashboard
+    // can show WHY a run failed without anyone reading daemon.log.
+    let error = null;
+    if (row.status === 'failed' && result) {
+      try {
+        error = JSON.parse(result).error ?? null;
+      } catch {
+        error = null;
+      }
+    }
     res.json({
       ...summary,
+      error,
       strategy: JSON.parse(execution_strategy),
       nodeStats: store.nodeStats(req.params.id),
       scriptLength: compiled_script.length,

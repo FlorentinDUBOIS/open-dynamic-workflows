@@ -55,12 +55,21 @@ export async function createSandbox(options) {
 
   const vm = runtime.newContext();
   let disposed = false;
+  let fatal = null; // a WASM/runtime-level failure that makes the VM unusable
   const inflight = new Set();
 
   const pump = () => {
-    if (disposed) return;
-    resetSlice();
-    runtime.executePendingJobs();
+    if (disposed || fatal) return;
+    try {
+      resetSlice();
+      runtime.executePendingJobs();
+    } catch (error) {
+      // A QuickJS/WASM-level abort ("Aborted(Assertion failed...)") leaves the
+      // VM unusable. Capture it as a clean error instead of letting a raw WASM
+      // assertion escape into the daemon and the user's terminal.
+      fatal = new Error('the workflow runtime hit an internal sandbox error and was stopped');
+      fatal.cause = String(error?.message ?? error).slice(0, 300);
+    }
   };
 
   /** Install an async bridge: guest gets a VM promise resolved with an envelope JSON string. */
@@ -135,31 +144,42 @@ export async function createSandbox(options) {
      */
     async runScript(scriptSource) {
       if (disposed) throw new Error('sandbox disposed');
+      try {
+        resetSlice();
+        const evalResult = vm.evalCode(String(scriptSource), 'workflow.js');
+        unwrapOrThrow(vm, evalResult).dispose();
 
-      resetSlice();
-      const evalResult = vm.evalCode(String(scriptSource), 'workflow.js');
-      unwrapOrThrow(vm, evalResult).dispose();
+        resetSlice();
+        const runResult = vm.evalCode(
+          `(function () {
+             if (!module.exports || typeof module.exports.execute !== "function") {
+               throw new Error("script must export execute via module.exports = { execute }");
+             }
+             return Promise.resolve(module.exports.execute(context));
+           })()`,
+          'runner.js'
+        );
+        const promiseHandle = unwrapOrThrow(vm, runResult);
 
-      resetSlice();
-      const runResult = vm.evalCode(
-        `(function () {
-           if (!module.exports || typeof module.exports.execute !== "function") {
-             throw new Error("script must export execute via module.exports = { execute }");
-           }
-           return Promise.resolve(module.exports.execute(context));
-         })()`,
-        'runner.js'
-      );
-      const promiseHandle = unwrapOrThrow(vm, runResult);
+        const totalTimeoutMs = options.totalTimeoutMs ?? 3600_000;
+        const resolved = await withTimeout(vm.resolvePromise(promiseHandle), totalTimeoutMs, pump, () => fatal);
+        promiseHandle.dispose();
+        if (fatal) throw fatal;
 
-      const totalTimeoutMs = options.totalTimeoutMs ?? 3600_000;
-      const resolved = await withTimeout(vm.resolvePromise(promiseHandle), totalTimeoutMs, pump);
-      promiseHandle.dispose();
-
-      const resultHandle = unwrapOrThrow(vm, resolved);
-      const value = vm.dump(resultHandle);
-      resultHandle.dispose();
-      return value;
+        const resultHandle = unwrapOrThrow(vm, resolved);
+        const value = vm.dump(resultHandle);
+        resultHandle.dispose();
+        return value;
+      } catch (error) {
+        if (fatal) throw fatal;
+        // Convert any low-level WASM/Emscripten abort into a clean message.
+        if (/Aborted|abort\(|RuntimeError|memory access|unreachable/i.test(String(error?.message ?? error))) {
+          const clean = new Error('the workflow runtime hit an internal sandbox error and was stopped');
+          clean.cause = String(error?.message ?? error).slice(0, 300);
+          throw clean;
+        }
+        throw error;
+      }
     },
 
     dispose() {
@@ -188,11 +208,15 @@ function unwrapOrThrow(vm, result) {
   return result.value;
 }
 
-function withTimeout(promise, ms, pump) {
+function withTimeout(promise, ms, pump, getFatal) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`workflow exceeded total timeout (${ms / 1000}s)`)), ms);
-    // keep the VM job queue moving while we wait
-    const tick = setInterval(pump, 25);
+    // keep the VM job queue moving while we wait; bail out fast on a fatal VM error
+    const tick = setInterval(() => {
+      pump();
+      const fatal = getFatal?.();
+      if (fatal) reject(fatal);
+    }, 25);
     promise
       .then(resolve, reject)
       .finally(() => {

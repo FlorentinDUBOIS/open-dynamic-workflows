@@ -114,8 +114,11 @@ export function createToolExecutor(options) {
     run_bash: async (command) => {
       requireUnattendedApproval('run_bash');
       const cmd = String(command ?? '');
+      // Case-insensitive: Windows command names (Remove-Item, FORMAT) are
+      // case-insensitive, so a case-sensitive guard would be trivially bypassed.
+      const lower = cmd.toLowerCase();
       for (const blocked of safety.blockedCommands ?? []) {
-        if (cmd.includes(blocked)) throw new Error(`blocked command pattern: ${blocked}`);
+        if (lower.includes(String(blocked).toLowerCase())) throw new Error(`blocked command pattern: ${blocked}`);
       }
       const shell = process.platform === 'win32' ? 'powershell' : 'bash';
       const flag = process.platform === 'win32' ? '-Command' : '-c';

@@ -36,16 +36,23 @@ export function createAgentQueue(options) {
       async () => {
         const started = Date.now();
         let lastError;
+        // Correction hint fed back into the NEXT attempt when the model returned
+        // unparseable or schema-invalid output — turns a blind retry into a
+        // self-correcting one, which matters a lot for weaker/free models.
+        let correction = null;
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           if (signal?.aborted) throw abortError();
           try {
-            const result = await callOnce(job, signal);
+            const result = await callOnce(job, signal, correction);
             return { ...result, durationMs: Date.now() - started };
           } catch (error) {
             lastError = error;
             if (signal?.aborted || error.name === 'AbortError') throw abortError();
             const retryable = RETRYABLE.has(error.code) || error.code === 'schema_invalid';
             if (!retryable || attempt === maxAttempts) throw error;
+            correction = error.code === 'schema_invalid'
+              ? { errors: error.validationErrors ?? [error.message], badOutput: error.rawOutput }
+              : null;
             const delay = backoff === 'linear' ? attempt * 1000 : 2 ** (attempt - 1) * 1000;
             log.warn(`agent retry ${attempt}/${maxAttempts} in ${delay}ms`, { code: error.code });
             await sleep(delay, signal);
@@ -57,7 +64,7 @@ export function createAgentQueue(options) {
     );
   }
 
-  async function callOnce(job, signal) {
+  async function callOnce(job, signal, correction) {
     const { provider, model } = options.resolveProvider(job.model);
 
     // combine caller signal with the per-agent timeout
@@ -75,8 +82,16 @@ export function createAgentQueue(options) {
     let effectiveJob = { ...job, model };
     if (job.schema) {
       const schema = normalizeSchema(job.schema);
-      effectiveJob.prompt =
-        `${job.prompt}\n\nReturn ONLY a JSON object matching this schema (no prose, no markdown fences):\n${JSON.stringify(schema)}`;
+      let instruction =
+        `${job.prompt}\n\nRespond with ONLY a single JSON object matching this schema — no prose, no explanation, no markdown code fences:\n${JSON.stringify(schema)}`;
+      if (correction) {
+        // Self-correction pass: show the model exactly what was wrong.
+        instruction +=
+          `\n\nYour PREVIOUS reply was rejected: ${correction.errors.join('; ')}.` +
+          (correction.badOutput ? `\nIt was:\n${String(correction.badOutput).slice(0, 1500)}` : '') +
+          `\nReturn corrected JSON now — only the JSON object.`;
+      }
+      effectiveJob.prompt = instruction;
       effectiveJob.schema = options.nativeStructuredOutput ? schema : undefined;
     }
 
@@ -88,11 +103,13 @@ export function createAgentQueue(options) {
       if (job.schema) {
         const parsed = extractJson(response.text);
         const verdict = parsed === undefined
-          ? { valid: false, errors: ['output was not parseable JSON'] }
+          ? { valid: false, errors: ['the reply was not valid JSON'] }
           : compileSchema(job.schema)(parsed);
         if (!verdict.valid) {
-          const err = new Error(`structured output failed validation: ${verdict.errors.join('; ')}`);
+          const err = new Error(`the model's reply did not match the required JSON shape (${verdict.errors.slice(0, 3).join('; ')})`);
           err.code = 'schema_invalid';
+          err.validationErrors = verdict.errors;
+          err.rawOutput = response.text;
           throw err;
         }
         output = parsed;
