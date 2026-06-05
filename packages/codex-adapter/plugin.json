@@ -1,0 +1,9 @@
+{
+  "name": "odw",
+  "description": "Dynamic multi-agent workflows for Codex — plan, orchestrate, and verify parallel agents via a local daemon.",
+  "author": { "name": "open-dynamic-workflows contributors", "url": "https://github.com/Suraj1235/open-dynamic-workflows" },
+  "license": "MIT",
+  "keywords": ["workflows", "orchestration", "multi-agent", "parallel", "ultracode", "planning"],
+  "skills": "./skills/",
+  "_note": "Descriptive metadata only. Codex has no plugin manifest format or marketplace; the real integration is the skill folder (skills/odw/SKILL.md) plus scripts/. See README."
+}

@@ -1,0 +1,18 @@
+services:
+  daemon:
+    build: .
+    ports:
+      - "7345:7345"
+    volumes:
+      - odw-data:/home/odw/.odw
+    environment:
+      - ODW_DAEMON_PORT=7345
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:7345/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  odw-data:

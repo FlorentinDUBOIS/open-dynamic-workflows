@@ -1,0 +1,44 @@
+{
+  "name": "odw-vscode",
+  "displayName": "Open Dynamic Workflows",
+  "description": "Plan, run, and monitor multi-agent workflows from VS Code via the local odw daemon.",
+  "version": "0.1.0",
+  "publisher": "open-dynamic-workflows",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "odw",
+          "title": "Dynamic Workflows",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "odw": [
+        {
+          "id": "odwWorkflows",
+          "name": "Workflows"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "odw.runWorkflow", "title": "ODW: Run Workflow" },
+      { "command": "odw.showDashboard", "title": "ODW: Show Dashboard" },
+      { "command": "odw.pauseWorkflow", "title": "ODW: Pause Workflow" },
+      { "command": "odw.resumeWorkflow", "title": "ODW: Resume Workflow" },
+      { "command": "odw.stopWorkflow", "title": "ODW: Stop Workflow" },
+      { "command": "odw.installDaemon", "title": "ODW: Install Local Daemon" }
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/"
+  }
+}

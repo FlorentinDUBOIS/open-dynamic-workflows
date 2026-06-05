@@ -1,0 +1,25 @@
+{
+  "name": "open-dynamic-workflows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dynamic multi-agent workflows for any AI coding agent — plan, orchestrate, verify.",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm test --workspaces --if-present",
+    "coverage": "npm run coverage --workspaces --if-present",
+    "lint": "eslint .",
+    "audit:high": "npm audit --audit-level=high"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "c8": "^10.1.3",
+    "eslint": "^9.39.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,13 @@
+﻿{
+  "name": "odw-codex",
+  "version": "0.1.0",
+  "description": "open-dynamic-workflows adapter for OpenAI Codex CLI: skill folder + daemon bridge scripts.",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
