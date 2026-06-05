@@ -33,7 +33,13 @@ export function decompose(prompt, options = {}) {
   if (options.graph) return normalizeGraph(options.graph, text);
 
   const complexity = options.complexityHint ?? inferComplexity(text);
-  const wantsVerification = complexity === 'high' || complexity === 'massive' || /\b(verify|correct|security|audit|critical)\b/i.test(text);
+  // Verification (the adversarial safety net) fires for high-stakes work AND for
+  // any scrutiny-class prompt — review, audit, find bugs, check, inspect — so the
+  // most natural phrasings get a verification pass instead of a silent plain run.
+  const wantsVerification =
+    complexity === 'high' ||
+    complexity === 'massive' ||
+    /\b(verif|correct|secur|audit|critical|review|bug|vulnerab|inspect|check|quality|flaw|issue|lint)\w*/i.test(text);
   const wantsMutation = /\b(fix|migrate|refactor|convert|update|rewrite|apply|implement)\b/i.test(text);
   const fanout = complexity !== 'low';
 

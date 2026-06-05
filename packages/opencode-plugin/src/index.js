@@ -130,7 +130,7 @@ export function writeUltracode(directory, enabled) {
 
 // ── message helpers ──────────────────────────────────────────────────────────
 
-const INSTALL_HINT = 'npm install -g odw-daemon && odw-daemon start';
+const INSTALL_HINT = 'install from github.com/Suraj1235/open-dynamic-workflows (clone, npm install, npm run setup), then: odw-daemon start';
 
 function planSummary(plan) {
   const e = plan.estimate ?? {};

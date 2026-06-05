@@ -90,7 +90,7 @@ test('plugin: chat.message falls back to native-orchestration directive when dae
     const text = output.parts[0].text;
     assert.match(text, /daemon OFFLINE/);
     assert.match(text, /PLAN FIRST/);
-    assert.match(text, /npm install -g odw-daemon/);
+    assert.match(text, /open-dynamic-workflows/);
   } finally {
     delete process.env.ODW_DAEMON_PORT;
   }

@@ -11,7 +11,7 @@ You orchestrate large tasks through an explicit plan and a local daemon instead 
 
 Run: `node scripts/daemon-bridge.js --check`
 - Exit 0 → daemon is up; use the daemon path.
-- Exit 1 → daemon is down; use the native fallback path (and mention `npm install -g odw-daemon && odw-daemon start` once).
+- Exit 1 → daemon is down; use the native fallback path (and mention once that the daemon installs from github.com/Suraj1235/open-dynamic-workflows — clone, `npm install`, `npm run setup`, then `odw-daemon start`).
 
 ## Daemon path
 

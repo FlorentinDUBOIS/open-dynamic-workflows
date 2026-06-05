@@ -46,7 +46,7 @@ npm test
 Run the daemon and a workflow from a shell (no editor needed):
 
 ```bash
-npm install -g ./packages/daemon       # or: npm install -g odw-daemon (once published)
+npm install -g ./packages/daemon       # global bin from the clone (odw-daemon is not on npm yet)
 odw-daemon start
 odw-daemon run --prompt "workflow: review every file in src for bugs" --cwd ./your-project
 ```

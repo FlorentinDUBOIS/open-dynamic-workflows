@@ -40,12 +40,21 @@ export function createServer(deps) {
     });
   });
 
+  // Preflight: is the configured default model actually usable (route + key)?
+  // Lets the CLI fail fast with guidance BEFORE rendering a plan.
+  app.get('/config/check', asyncRoute(async (_req, res) => {
+    res.json(deps.checkModel ? deps.checkModel() : { ok: true });
+  }));
+
   app.post('/workflows/plan', asyncRoute(async (req, res) => {
     const { prompt, options } = req.body ?? {};
     if (!prompt || typeof prompt !== 'string') {
       throw Object.assign(new Error('body.prompt (string) is required'), { status: 400, code: 'bad_request' });
     }
     const plan = await planner(prompt, options ?? {});
+    // Annotate whether the plan includes an adversarial verification node, so
+    // the absence of the safety net is never silent.
+    plan.hasVerification = (plan.taskGraph?.tasks ?? []).some((t) => t.type === 'verification');
     res.json({ plan });
   }));
 

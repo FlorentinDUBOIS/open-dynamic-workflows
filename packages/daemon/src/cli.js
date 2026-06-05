@@ -216,6 +216,20 @@ program
       return;
     }
 
+    // Fail fast with guidance if the configured model can't be reached — BEFORE
+    // we spend time planning and rendering a plan the user can't actually run.
+    try {
+      const check = await (await fetch(`http://127.0.0.1:${port}/config/check`, { signal: AbortSignal.timeout(5000) })).json();
+      if (check && check.ok === false) {
+        console.error(`${color.err('✗')} model "${check.model}" is not usable: ${check.reason}`);
+        console.error(`  ${color.warn('fix:')} edit ~/.odw/config.json — add an API key under "apiKeys", or set "models.default" to a local model like "ollama:llama3" (no key needed).`);
+        process.exitCode = 1;
+        return;
+      }
+    } catch {
+      /* preflight is best-effort; continue if the endpoint is unavailable */
+    }
+
     let plan;
     if (opts.script) {
       const script = readFileSync(resolve(opts.script), 'utf8');
@@ -239,6 +253,7 @@ program
       console.log(`  tokens       ~${e.tokens.toLocaleString()}`);
       console.log(`  est. cost    $${e.costUSD}`);
       console.log(`  est. time    ~${e.minutes} min`);
+      console.log(`  verification ${plan.hasVerification ? color.ok('yes (adversarial)') : color.dim('no — add "verify"/"audit"/"review" intent for a verification pass')}`);
     }
 
     const execRes = await fetch(`http://127.0.0.1:${port}/workflows/exec`, {

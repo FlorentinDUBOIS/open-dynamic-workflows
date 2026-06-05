@@ -127,7 +127,7 @@ function dashboardHtml(workflows, health) {
   <div class="meta">${
     health
       ? `daemon healthy · ${health.activeWorkflows} active · ${health.activeAgents}/${health.maxConcurrency} agents busy`
-      : 'daemon offline — <code>npm i -g odw-daemon && odw-daemon start</code>'
+      : 'daemon offline — install from github.com/Suraj1235/open-dynamic-workflows, then run <code>odw-daemon start</code>'
   }</div>
   <table>
     <tr><th>id</th><th>status</th><th>agents</th><th>cost</th><th>prompt</th></tr>
@@ -252,7 +252,7 @@ function activate(context) {
 
     vscode.commands.registerCommand('odw.installDaemon', () => {
       const terminal = vscode.window.createTerminal('odw daemon');
-      terminal.sendText('npm install -g odw-daemon && odw-daemon start');
+      terminal.sendText('git clone https://github.com/Suraj1235/open-dynamic-workflows && cd open-dynamic-workflows && npm install && npm run setup');
       terminal.show();
     })
   );

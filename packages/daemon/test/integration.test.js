@@ -79,6 +79,16 @@ test('integration: plan → exec → result completes a full workflow over HTTP'
   assert.match(script, /async function execute\(context\)/);
 });
 
+test('integration: /config/check passes for the mock (usable model) and plan reports verification', async () => {
+  const check = await (await fetch(`${base}/config/check`)).json();
+  assert.equal(check.ok, true, JSON.stringify(check));
+
+  // an audit-class prompt must include an adversarial verification node
+  const { plan } = await post('/workflows/plan', { prompt: 'workflow: review every file in src for bugs' }).then((r) => r.json());
+  assert.equal(plan.hasVerification, true, 'review/bug prompts should plan a verification pass');
+  assert.ok(plan.taskGraph.tasks.some((t) => t.type === 'verification'));
+});
+
 test('integration: list endpoint includes the workflow', async () => {
   const { workflows } = await (await fetch(`${base}/workflows`)).json();
   assert.ok(workflows.length >= 1);

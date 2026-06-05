@@ -83,10 +83,10 @@ npm run setup
 }
 ```
 
-No cloud key? Run a local model and pay nothing — no key needed at all:
+No cloud key? Run a local model and pay nothing — no key needed at all. Point all three model roles at it so planning and fallbacks stay on the free model too:
 
 ```json
-{ "models": { "default": "ollama:llama3" } }
+{ "models": { "planning": "ollama:llama3", "default": "ollama:llama3", "fallback": "ollama:llama3" } }
 ```
 
 **Any OpenAI-compatible endpoint** works too — OpenCode Zen, Azure OpenAI, vLLM, LM Studio, Together, Groq. Point `baseURLs.default` at it and put the key under `apiKeys.default`:
@@ -95,9 +95,11 @@ No cloud key? Run a local model and pay nothing — no key needed at all:
 {
   "baseURLs": { "default": "https://opencode.ai/zen/v1" },
   "apiKeys":  { "default": "your-key" },
-  "models":   { "default": "minimax-m3-free" }
+  "models":   { "planning": "minimax-m3-free", "default": "minimax-m3-free", "fallback": "minimax-m3-free" }
 }
 ```
+
+If the configured model has no key or route, `odw-daemon run` tells you up front (before planning) exactly which line of `~/.odw/config.json` to fix — no silent first-run failures.
 
 Model routing is automatic: `claude-*` → Anthropic, `gpt-*`/`o*` → OpenAI, `ollama:*` → local Ollama, `provider:model` → a named `baseURLs.<provider>`, and anything else → `baseURLs.default`. So you can run entirely on a free model with no cloud spend.
 

@@ -51,7 +51,7 @@ async function main() {
       console.log(`odw daemon healthy on ${BASE} — ${health.activeWorkflows} active workflow(s)`);
       process.exit(0);
     } catch {
-      console.error(`odw daemon not reachable on ${BASE}. Start it: npm install -g odw-daemon && odw-daemon start`);
+      console.error(`odw daemon not reachable on ${BASE}. Install from github.com/Suraj1235/open-dynamic-workflows (clone, npm install, npm run setup), then: odw-daemon start`);
       process.exit(1);
     }
   }

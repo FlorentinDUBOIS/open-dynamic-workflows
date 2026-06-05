@@ -63,7 +63,18 @@ export async function startDaemon(options = {}) {
       llmDecompose: plannerOptions.useLlmPlanner ? llmDecompose(config, queue) : undefined,
     });
 
-  const api = createServer({ runtime, store, config, logger, planner, events });
+  /** Preflight: can we actually reach the configured default model? */
+  const checkModel = () => {
+    const model = config.models.default;
+    try {
+      resolveProvider(model, config, { fetchImpl: options.fetchImpl });
+      return { ok: true, model };
+    } catch (error) {
+      return { ok: false, model, reason: String(error.message) };
+    }
+  };
+
+  const api = createServer({ runtime, store, config, logger, planner, events, checkModel });
   const server = await api.listen(options.port ?? config.daemon.port, options.host ?? '127.0.0.1');
   const { port } = server.address();
   logger.info(`daemon listening on ${options.host ?? '127.0.0.1'}:${port}`);

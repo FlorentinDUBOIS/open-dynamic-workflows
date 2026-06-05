@@ -24,10 +24,11 @@ mkdir -p .agents/skills/odw
 cp -r skills/odw/* scripts .agents/skills/odw/
 ```
 
-Then (optional, for 100+ agents + crash-resume):
+Then (optional, for 100+ agents + crash-resume) install the daemon from GitHub (not yet on npm):
 
 ```bash
-npm install -g odw-daemon
+git clone https://github.com/Suraj1235/open-dynamic-workflows
+cd open-dynamic-workflows && npm install && npm run setup
 odw-daemon start
 ```
 

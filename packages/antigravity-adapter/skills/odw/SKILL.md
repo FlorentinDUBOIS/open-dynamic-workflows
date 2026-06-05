@@ -12,7 +12,7 @@ Same canonical skill as the Codex adapter — only the install path differs
 
 Run: `node scripts/daemon-bridge.js --check`
 - Exit 0 → daemon is up; use the daemon path below.
-- Exit 1 → daemon is down; orchestrate natively with Antigravity's Agent Manager (session-scoped) and mention `npm install -g odw-daemon && odw-daemon start` once.
+- Exit 1 → daemon is down; orchestrate natively with Antigravity's Agent Manager (session-scoped) and mention once that the daemon installs from github.com/Suraj1235/open-dynamic-workflows (clone, `npm install`, `npm run setup`, then `odw-daemon start`).
 
 ## Daemon path
 

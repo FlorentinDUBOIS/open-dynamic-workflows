@@ -20,6 +20,6 @@ cp -r skills/odw/* ~/.gemini/skills/odw/
 cp -r ../codex-adapter/scripts ~/.gemini/skills/odw/scripts   # shared bridge
 cp workflows/odw-run.md ~/.gemini/antigravity/global_workflows/
 
-# optional, for 100+ agents + crash-resume:
-npm install -g odw-daemon && odw-daemon start
+# optional, for 100+ agents + crash-resume (install from GitHub; not yet on npm):
+git clone https://github.com/Suraj1235/open-dynamic-workflows && cd open-dynamic-workflows && npm install && npm run setup && odw-daemon start
 ```

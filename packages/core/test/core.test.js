@@ -114,6 +114,13 @@ test('decompose: simple prompt stays small with no verification', () => {
   assert.equal(g.tasks.find((t) => t.id === 'work').parallelizable, false);
 });
 
+test('decompose: scrutiny-class prompts (review/bug/inspect) get a verification pass', () => {
+  for (const p of ['review the files for bugs', 'inspect this module for issues', 'check the code quality', 'find flaws in src']) {
+    const g = decompose(p, { complexityHint: 'low' });
+    assert.ok(g.tasks.some((t) => t.type === 'verification'), `"${p}" should plan verification`);
+  }
+});
+
 test('decompose: external graph is validated (unknown dep rejected)', () => {
   assert.throws(
     () => decompose('x', { graph: { tasks: [{ id: 'a', dependencies: ['ghost'] }] } }),
