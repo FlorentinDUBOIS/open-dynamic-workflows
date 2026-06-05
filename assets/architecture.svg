@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" fill="none" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" role="img" aria-label="how open dynamic workflows runs: you describe a workflow, a local script plans and fans out parallel agents, critics verify, you get one answer">
+  <defs>
+    <linearGradient id="ind" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6366f1" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#6366f1" stop-opacity="0.9"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#6366f1"/>
+    </marker>
+  </defs>
+
+  <!-- faint baseline tying the flow together -->
+  <line x1="80" y1="300" x2="1120" y2="300" stroke="#8b8fa3" stroke-opacity="0.25" stroke-width="1.5" stroke-dasharray="2 6"/>
+
+  <!-- spine edges between columns -->
+  <g stroke="url(#edge)" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
+    <path d="M210 210 C 270 210, 290 210, 300 210"/>
+    <path d="M470 178 C 540 150, 560 110, 626 92"/>
+    <path d="M470 210 C 540 210, 560 210, 626 210"/>
+    <path d="M470 242 C 540 270, 560 300, 626 318"/>
+    <path d="M778 92  C 880 110, 900 170, 962 200"/>
+    <path d="M778 210 C 880 210, 900 208, 962 206"/>
+    <path d="M778 318 C 880 300, 900 250, 962 224"/>
+  </g>
+
+  <!-- COL 1 — YOU -->
+  <g>
+    <rect x="40" y="186" width="170" height="48" rx="8" fill="none" stroke="#6366f1" stroke-width="1.5"/>
+    <text x="58" y="215" font-size="15" fill="#6366f1">workflow: audit auth</text>
+    <text x="125" y="276" font-size="12" fill="#8b8fa3" text-anchor="middle" letter-spacing="1">YOU</text>
+  </g>
+
+  <!-- COL 2 — THE SCRIPT (daemon, dark to echo the terminal) -->
+  <g>
+    <rect x="300" y="168" width="170" height="84" rx="14" fill="#1a1b22"/>
+    <path d="M300 182 a14 14 0 0 1 14 -14 h142 a14 14 0 0 1 14 14 v6 h-170 z" fill="#24262f"/>
+    <circle cx="315" cy="178" r="3" fill="#ef4444"/>
+    <circle cx="326" cy="178" r="3" fill="#facc15"/>
+    <circle cx="337" cy="178" r="3" fill="#22c55e"/>
+    <text x="385" y="182" font-size="11" fill="#8b8fa3" text-anchor="middle">orchestrator.js</text>
+    <text x="385" y="214" font-size="14" fill="#c7d2fe" text-anchor="middle">the script</text>
+    <text x="385" y="236" font-size="10.5" fill="#9aa0b4" text-anchor="middle">local daemon · no model in the loop</text>
+    <text x="385" y="276" font-size="12" fill="#8b8fa3" text-anchor="middle" letter-spacing="1">THE SCRIPT</text>
+  </g>
+
+  <!-- COL 3 — PARALLEL AGENTS (fan; two carry a failure dot) -->
+  <g>
+    <circle cx="640" cy="92" r="14" fill="#a5b4fc"/>
+    <circle cx="640" cy="151" r="14" fill="#a5b4fc"/>
+    <circle cx="640" cy="210" r="14" fill="#a5b4fc"/>
+    <circle cx="640" cy="269" r="14" fill="#a5b4fc"/>
+    <circle cx="640" cy="318" r="14" fill="#a5b4fc"/>
+    <!-- two agents fail; the run survives -->
+    <circle cx="647" cy="85" r="4" fill="#facc15"/>
+    <circle cx="647" cy="262" r="4" fill="#facc15"/>
+    <text x="640" y="360" font-size="12" fill="#8b8fa3" text-anchor="middle" letter-spacing="1">PARALLEL AGENTS</text>
+  </g>
+
+  <!-- COL 4 — ADVERSARIAL VERIFY -->
+  <g>
+    <circle cx="1020" cy="210" r="24" fill="url(#ind)"/>
+    <path d="M1009 210 l7 8 l15 -18" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- two critics feeding in -->
+    <circle cx="966" cy="150" r="9" fill="#ef4444"/>
+    <circle cx="966" cy="270" r="9" fill="#22c55e"/>
+    <g stroke="url(#edge)" stroke-width="2" fill="none" marker-end="url(#arrow)">
+      <path d="M974 156 C 990 170, 998 185, 1002 196"/>
+      <path d="M974 264 C 990 250, 998 235, 1002 224"/>
+    </g>
+    <text x="1020" y="262" font-size="11" fill="#8b8fa3" text-anchor="middle">critics</text>
+    <text x="1020" y="312" font-size="12" fill="#8b8fa3" text-anchor="middle" letter-spacing="1">ADVERSARIAL VERIFY</text>
+  </g>
+</svg>
