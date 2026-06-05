@@ -2,24 +2,202 @@
  * Script sandbox — quickjs-emscripten (WASM QuickJS, engine-level isolation).
  * No fs, no network, no process, no require, no eval inside the guest.
  *
- * Boundary design:
- *  - Host exposes ONLY thin async bridges crossing as JSON strings:
- *      __host_agent, __host_tool, __host_checkpoint, __host_log,
- *      __host_phase, __host_budget, __host_args
- *  - Each bridge returns a VM deferred promise (newPromise → resolve →
- *    executePendingJobs) so MANY calls can be in flight → guest Promise.all works.
- *  - parallel/pipeline/verify/loop are implemented IN-GUEST (guest-prelude.js);
- *    no closures ever cross the boundary.
- *  - CPU guard: interrupt handler cycle budget. Memory: setMemoryLimit.
- *    Wall-clock budgets enforced host-side (timeouts.perAgent/perPhase/total).
+ * Async host bridges return VM deferred promises (newPromise → resolve →
+ * executePendingJobs), so many calls can be in flight simultaneously and
+ * guest-side Promise.all works. Sync bridges return JSON strings directly.
+ * CPU guard: per-slice wall-clock interrupt. Memory: setMemoryLimit.
  */
 
+import { createRequire } from 'node:module';
+import { GUEST_PRELUDE } from './guest-prelude.js';
+
+const require = createRequire(import.meta.url);
+const { getQuickJS } = require('quickjs-emscripten');
+
+const OK = (value) => JSON.stringify({ ok: true, value: value === undefined ? null : value });
+const FAIL = (error) =>
+  JSON.stringify({ ok: false, error: String(error?.message ?? error).slice(0, 2000), code: error?.code });
+
 /**
- * @param {{hostBridges: Record<string, (payloadJson: string) => Promise<string>|string>,
- *          memoryLimitBytes?: number, interruptCycles?: number, logger?: object}} options
+ * @param {{
+ *   hostBridges: {
+ *     agent: (payload: any) => Promise<any>,
+ *     tool: (payload: any) => Promise<any>,
+ *     checkpoint: (payload: any) => Promise<any>,
+ *     log?: (payload: {message: string, level: string}) => void,
+ *     phase?: (payload: {name: string, meta: object}) => void,
+ *     budget?: () => any,
+ *     args?: () => any,
+ *   },
+ *   strategy?: object,
+ *   memoryLimitBytes?: number,
+ *   sliceTimeoutMs?: number,
+ *   totalTimeoutMs?: number,
+ * }} options
  * @returns {Promise<{runScript: (scriptSource: string) => Promise<any>, dispose: () => void}>}
  */
 export async function createSandbox(options) {
-  void options;
-  throw new Error('not implemented (P4)');
+  const bridges = options.hostBridges;
+  if (!bridges?.agent) throw new Error('createSandbox: hostBridges.agent is required');
+
+  const QuickJS = await getQuickJS();
+  const runtime = QuickJS.newRuntime();
+  runtime.setMemoryLimit(options.memoryLimitBytes ?? 256 * 1024 * 1024);
+  runtime.setMaxStackSize(1024 * 1024);
+
+  // Per-slice CPU guard: bounds contiguous synchronous execution, not awaited time.
+  const sliceTimeoutMs = options.sliceTimeoutMs ?? 1000;
+  let sliceStart = Date.now();
+  runtime.setInterruptHandler(() => Date.now() - sliceStart > sliceTimeoutMs);
+  const resetSlice = () => {
+    sliceStart = Date.now();
+  };
+
+  const vm = runtime.newContext();
+  let disposed = false;
+  const inflight = new Set();
+
+  const pump = () => {
+    if (disposed) return;
+    resetSlice();
+    runtime.executePendingJobs();
+  };
+
+  /** Install an async bridge: guest gets a VM promise resolved with an envelope JSON string. */
+  const installAsync = (name, impl) => {
+    vm.newFunction(name, (payloadHandle) => {
+      let payload;
+      try {
+        payload = JSON.parse(vm.getString(payloadHandle));
+      } catch (error) {
+        return vm.newString(FAIL(error));
+      }
+      const deferred = vm.newPromise();
+      const work = Promise.resolve()
+        .then(() => impl(payload))
+        .then(
+          (value) => {
+            if (!disposed) deferred.resolve(vm.newString(OK(value)));
+          },
+          (error) => {
+            if (!disposed) deferred.resolve(vm.newString(FAIL(error)));
+          }
+        )
+        .finally(() => inflight.delete(work));
+      inflight.add(work);
+      deferred.settled.then(pump);
+      return deferred.handle;
+    }).consume((fn) => vm.setProp(vm.global, name, fn));
+  };
+
+  /** Install a sync bridge returning an envelope JSON string immediately. */
+  const installSync = (name, impl) => {
+    vm.newFunction(name, (payloadHandle) => {
+      try {
+        const payload = payloadHandle ? JSON.parse(vm.getString(payloadHandle)) : undefined;
+        return vm.newString(OK(impl(payload)));
+      } catch (error) {
+        return vm.newString(FAIL(error));
+      }
+    }).consume((fn) => vm.setProp(vm.global, name, fn));
+  };
+
+  installAsync('__host_agent', bridges.agent);
+  installAsync('__host_tool', bridges.tool ?? (() => Promise.reject(new Error('tools are not available in this run'))));
+  installAsync('__host_checkpoint', bridges.checkpoint ?? (() => Promise.resolve(null)));
+  installSync('__host_log', (p) => {
+    bridges.log?.(p);
+    return null;
+  });
+  installSync('__host_phase', (p) => {
+    bridges.phase?.(p);
+    return null;
+  });
+  installSync('__host_budget', () => bridges.budget?.() ?? null);
+  installSync('__host_args', () => bridges.args?.() ?? {});
+
+  // Evaluate the prelude once.
+  resetSlice();
+  vm.unwrapResult(vm.evalCode(GUEST_PRELUDE, 'prelude.js')).dispose();
+
+  if (options.strategy) {
+    resetSlice();
+    vm.unwrapResult(
+      vm.evalCode(`context.strategy = ${JSON.stringify(options.strategy)};`, 'strategy.js')
+    ).dispose();
+  }
+
+  return {
+    /**
+     * Evaluate an orchestration script and run its exported execute(context).
+     * @param {string} scriptSource
+     * @returns {Promise<any>}
+     */
+    async runScript(scriptSource) {
+      if (disposed) throw new Error('sandbox disposed');
+
+      resetSlice();
+      const evalResult = vm.evalCode(String(scriptSource), 'workflow.js');
+      unwrapOrThrow(vm, evalResult).dispose();
+
+      resetSlice();
+      const runResult = vm.evalCode(
+        `(function () {
+           if (!module.exports || typeof module.exports.execute !== "function") {
+             throw new Error("script must export execute via module.exports = { execute }");
+           }
+           return Promise.resolve(module.exports.execute(context));
+         })()`,
+        'runner.js'
+      );
+      const promiseHandle = unwrapOrThrow(vm, runResult);
+
+      const totalTimeoutMs = options.totalTimeoutMs ?? 3600_000;
+      const resolved = await withTimeout(vm.resolvePromise(promiseHandle), totalTimeoutMs, pump);
+      promiseHandle.dispose();
+
+      const resultHandle = unwrapOrThrow(vm, resolved);
+      const value = vm.dump(resultHandle);
+      resultHandle.dispose();
+      return value;
+    },
+
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      try {
+        vm.dispose();
+        runtime.dispose();
+      } catch {
+        /* double-dispose safety */
+      }
+    },
+  };
+}
+
+function unwrapOrThrow(vm, result) {
+  if (result.error) {
+    const detail = vm.dump(result.error);
+    result.error.dispose();
+    const message =
+      typeof detail === 'object' && detail !== null
+        ? `${detail.name ?? 'Error'}: ${detail.message ?? JSON.stringify(detail)}`
+        : String(detail);
+    throw new Error(`script error — ${message}`);
+  }
+  return result.value;
+}
+
+function withTimeout(promise, ms, pump) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`workflow exceeded total timeout (${ms / 1000}s)`)), ms);
+    // keep the VM job queue moving while we wait
+    const tick = setInterval(pump, 25);
+    promise
+      .then(resolve, reject)
+      .finally(() => {
+        clearTimeout(timer);
+        clearInterval(tick);
+      });
+  });
 }

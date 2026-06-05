@@ -1,7 +1,7 @@
 /**
  * Model pricing reference (USD per million tokens, input/output).
  * Used for pre-execution estimates and real-time cost tracking.
- * Unknown models fall back to `default`.
+ * Unknown models fall back to `default`; local models cost zero.
  */
 export const PRICING = {
   // anthropic
@@ -20,20 +20,27 @@ export const PRICING = {
   'gpt-5-mini': { input: 0.25, output: 2 },
   'o3': { input: 2, output: 8 },
   'o4-mini': { input: 1.1, output: 4.4 },
-  // local
-  'ollama:*': { input: 0, output: 0 },
   // fallback for unknown models
   'default': { input: 3, output: 15 },
 };
 
 /**
  * Cost of a single call in USD.
+ * Local/free model conventions (`ollama:*`, `*-free`) cost zero.
  * @param {string} model
  * @param {number} tokensInput
  * @param {number} tokensOutput
  * @returns {number}
  */
 export function costFor(model, tokensInput, tokensOutput) {
-  void model; void tokensInput; void tokensOutput;
-  throw new Error('not implemented (P4)');
+  const id = String(model ?? '');
+  if (id.startsWith('ollama:') || id.startsWith('ollama/') || /-free$/.test(id)) return 0;
+  // exact id, then date-suffix-stripped alias (claude-haiku-4-5-20251001 → claude-haiku-4-5)
+  const rate =
+    PRICING[id] ??
+    PRICING[id.replace(/-\d{8}$/, '')] ??
+    PRICING['default'];
+  const inTok = Math.max(0, Number(tokensInput) || 0);
+  const outTok = Math.max(0, Number(tokensOutput) || 0);
+  return (inTok * rate.input + outTok * rate.output) / 1_000_000;
 }

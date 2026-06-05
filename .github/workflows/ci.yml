@@ -46,7 +46,7 @@ jobs:
       - run: npm audit --audit-level=high
       - name: secrets scan
         run: |
-          if git grep -nE 'AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|aws_secret_access_key' -- ':!*.md'; then
+          if git grep -nE 'AKIA[0-9A-Z]{16}|sk_live_[0-9a-zA-Z]{24,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ghp_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}|aws_secret_access_key' -- ':!*.md' ':!.github/workflows/ci.yml'; then
             echo "Potential secret found"; exit 1
           else
             echo "secrets scan clean"

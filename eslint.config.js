@@ -31,9 +31,30 @@ export default [
     },
   },
   {
-    files: ['packages/vscode-extension/**/*.js', 'packages/codex-adapter/scripts/**/*.js'],
+    files: ['packages/vscode-extension/**/*.js', 'packages/codex-adapter/**/*.js', 'packages/antigravity-adapter/**/*.js'],
     languageOptions: {
       sourceType: 'commonjs',
+    },
+  },
+  {
+    // Orchestration scripts run inside the odw sandbox, where the runtime
+    // primitives are injected globals (see daemon/src/guest-prelude.js).
+    files: ['examples/workflows/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        agent: 'readonly',
+        parallel: 'readonly',
+        pipeline: 'readonly',
+        verify: 'readonly',
+        loop: 'readonly',
+        phase: 'readonly',
+        log: 'readonly',
+        checkpoint: 'readonly',
+        budget: 'readonly',
+        args: 'readonly',
+        context: 'readonly',
+      },
     },
   },
   {

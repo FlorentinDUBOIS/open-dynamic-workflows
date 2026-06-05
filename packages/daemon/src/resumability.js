@@ -1,17 +1,29 @@
 /**
- * Resumability engine: load latest checkpoint + completed-node cache,
- * re-queue orphaned ('running') and retryable 'failed' nodes, then re-run the
- * script — completed agent() calls resolve instantly from cache.
+ * Resumability facade: list interrupted workflows and hand them back to the
+ * runtime. The heavy lifting (orphan requeue, cache rebuild, deterministic
+ * node identity) lives in runtime.js + db.js; this module is the API the CLI
+ * and server use.
  */
 
 /**
  * @param {{store: object, runtime: object, logger: object}} deps
- * @returns {{
- *   resumeWorkflow: (workflowId: string) => Promise<boolean>,
- *   listInterrupted: () => Array<{workflow_id: string, status: string}>,
- * }}
  */
 export function createResumability(deps) {
-  void deps;
-  throw new Error('not implemented (P4)');
+  const { store, runtime, logger } = deps;
+  return {
+    /** @param {string} workflowId */
+    async resumeWorkflow(workflowId) {
+      const ok = await runtime.resumeWorkflow(workflowId);
+      if (ok) logger.info(`resumed workflow ${workflowId}`);
+      return ok;
+    },
+    listInterrupted() {
+      return store.listInterrupted();
+    },
+    async resumeAll() {
+      const ids = await runtime.resumeInterrupted();
+      if (ids.length) logger.info(`resumed ${ids.length} interrupted workflow(s)`, { ids });
+      return ids;
+    },
+  };
 }
