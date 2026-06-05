@@ -212,7 +212,7 @@ async function execute(context) {
 module.exports = { execute };
 ```
 
-Three runnable examples live in [`examples/workflows/`](examples/workflows): a security audit (MapReduce + adversarial), a JS→TS migration (pipeline), and deep research (consensus).
+Runnable examples live in [`examples/workflows/`](examples/workflows): a security audit (MapReduce + adversarial), a JS→TS migration (pipeline), deep research (consensus), and **`studio-prime.workflow.js`** — an autonomous 6-phase product pipeline (Blueprint → Link → Architecture → Implement → Stylize → Release) where every phase is gated by an adversarial review. Run any of them with `odw-daemon run --script examples/workflows/<file> --cwd <project>`.
 
 ---
 

@@ -72,3 +72,35 @@ test('example: deep-research.js executes with args()', async () => {
   assert.equal(result.summary, 's');
   assert.deepEqual(result.keyFindings, ['k']);
 });
+
+test('example: studio-prime.workflow.js runs the full 6-phase pipeline in the sandbox', async () => {
+  const script = readFileSync(join(examplesDir, 'studio-prime.workflow.js'), 'utf8');
+  const phases = [];
+  const checkpoints = [];
+  const bridges = {
+    agent: async (job) => {
+      const role = job.role || '';
+      const p = job.prompt || '';
+      if (/Findings to review:/.test(p) || /steelman|zero-trust|completeness-checker/i.test(role)) {
+        return { approved: true, confidence: 0.9, critique: 'mock: sound', rejectedItems: [] };
+      }
+      if (/researcher/.test(role)) return { findings: ['mock'], assumptionUpdates: [] };
+      if (/northstar-validator/.test(role)) return { requirements: [{ id: 'r1', status: 'MET', reason: 'mock' }], overall: 'MET', gaps: [] };
+      return { decisions: ['d'], moduleBoundaries: [], interfaces: [], modules: ['m'], designTokens: {}, deployPlan: {} };
+    },
+    tool: async ({ tool }) => { if (tool === 'read_file') throw new Error('no brief file'); return null; },
+    checkpoint: async (d) => { checkpoints.push(d.phase); return null; },
+    log: () => {},
+    phase: ({ name }) => phases.push(name),
+    budget: () => ({ tokensUsed: 0, costUSD: 0, maxTokens: 1, maxCostUSD: 1, percentUsed: 0 }),
+    args: () => ({ northstar: 'Build a small, well-tested CLI utility.' }),
+  };
+  const sandbox = await createSandbox({ hostBridges: bridges, totalTimeoutMs: 120000 });
+  const result = await sandbox.runScript(script);
+  sandbox.dispose();
+  assert.deepEqual(phases, ['P1 Blueprint', 'P2 Link', 'P3 Architecture', 'P4 Implement', 'P5 Stylize', 'P6 Release', 'North Star Validation']);
+  assert.equal(checkpoints.length, 7);
+  assert.equal(result.unresolvedBlockers.length, 0);
+  assert.equal(Object.keys(result.phases).length, 6);
+  assert.equal(result.northstarValidation.overall, 'MET');
+});
