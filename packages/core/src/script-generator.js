@@ -107,9 +107,24 @@ function emitTask(task, roleById, strategy) {
           .map((d) => `${sanitizeKey(d)}: results[${JSON.stringify(d)}]`)
           .join(', ')} }).slice(0, 20000)`
       : '';
-    lines.push(`  results[${JSON.stringify(task.id)}] = await ${baseAgentCall(
-      `${JSON.stringify(task.description)}${depsContext}`
-    )};`);
+    const call = `${baseAgentCall(`${JSON.stringify(task.description)}${depsContext}`)}`;
+    if (task.type === 'synthesis') {
+      // The terminal synthesis step must never hard-fail the whole run just
+      // because the model returned prose instead of JSON. Degrade to a
+      // best-effort result built from the upstream data so the workflow
+      // always completes with something useful.
+      const upstream = task.dependencies[0];
+      const fallbackData = upstream ? `results[${JSON.stringify(upstream)}]` : 'null';
+      lines.push(`  try {`);
+      lines.push(`    results[${JSON.stringify(task.id)}] = await ${call};`);
+      lines.push(`  } catch (e) {`);
+      lines.push(`    if (e && (e.code === 'aborted' || e.code === 'paused')) throw e;`);
+      lines.push(`    log('synthesis could not produce structured output (' + e.message + ') — returning partial results', 'warn');`);
+      lines.push(`    results[${JSON.stringify(task.id)}] = { summary: 'Workflow completed with partial results; the final synthesis step could not be formatted by the model.', partial: ${fallbackData}, synthesisError: String(e.message) };`);
+      lines.push(`  }`);
+    } else {
+      lines.push(`  results[${JSON.stringify(task.id)}] = await ${call};`);
+    }
   }
 
   lines.push(`  await checkpoint({ phase: ${JSON.stringify(task.id)}, data: results[${JSON.stringify(task.id)}] });`);
