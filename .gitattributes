@@ -1,0 +1,9 @@
+# Normalize all text to LF on checkout, on every platform. Keeps shipped
+# skill/markdown/source files byte-identical across Windows, macOS, and Linux
+# (YAML frontmatter parsers and line-anchored tests depend on it).
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.vsix binary

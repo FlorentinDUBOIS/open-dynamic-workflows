@@ -6,5 +6,5 @@ const { join } = require('node:path');
 
 test('canonical skill folder exists with frontmatter', () => {
   const skill = readFileSync(join(__dirname, '..', 'skills', 'odw', 'SKILL.md'), 'utf8');
-  assert.match(skill, /^---\nname: odw\n/);
+  assert.match(skill, /^---\r?\nname: odw\r?\n/);
 });

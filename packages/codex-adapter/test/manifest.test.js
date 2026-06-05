@@ -15,7 +15,7 @@ test('plugin.json metadata is valid JSON with required fields', () => {
 
 test('canonical skill folder exists with frontmatter and daemon steps', () => {
   const skill = readFileSync(join(root, 'skills', 'odw', 'SKILL.md'), 'utf8');
-  assert.match(skill, /^---\nname: odw\n/);
+  assert.match(skill, /^---\r?\nname: odw\r?\n/);
   assert.match(skill, /daemon-bridge\.js --check/);
   assert.match(skill, /daemon-bridge\.js plan/);
   assert.ok(existsSync(join(root, 'AGENTS.md')));
