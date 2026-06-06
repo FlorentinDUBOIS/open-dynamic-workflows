@@ -166,7 +166,7 @@ The daemon is the engine; the adapters are how your existing tool talks to it ov
 | Editor / agent | How it connects | When the daemon is off |
 | --- | --- | --- |
 | **OpenCode** | drop-in plugin (`"plugin": ["odw-opencode"]` in `opencode.json`) — triggers on "run a workflow", `ultracode`, or `/deep-research` | falls back to OpenCode's own sub-agents, capped at the platform limit |
-| **Codex · Antigravity** | a skill folder (`SKILL.md` + a zero-dependency bridge script) that teaches the agent to plan first, then call the daemon | the agent orchestrates natively, within platform limits |
+| **Codex · Antigravity · OpenClaw** | a skill folder (`SKILL.md` + a zero-dependency bridge script) that teaches the agent to plan first, then call the daemon — the OpenClaw one is ClawHub-publishable | the agent orchestrates natively, within platform limits |
 | **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | shows an install hint |
 
 Honest note: there is no Codex plugin marketplace and no public Antigravity automation API. Those adapters use the extension points those tools actually have — skills, `AGENTS.md`, saved workflows — and say so out loud.
@@ -289,6 +289,7 @@ packages/
   opencode-plugin/      OpenCode plugin + custom tools + slash commands
   codex-adapter/        Codex skill folder + daemon bridge
   antigravity-adapter/  Antigravity skill + saved workflow
+  openclaw-adapter/     OpenClaw skill (ClawHub-publishable) + daemon bridge
   vscode-extension/     tree view, dashboard webview, status bar
 examples/workflows/     runnable orchestration scripts
 ```

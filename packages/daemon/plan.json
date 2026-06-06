@@ -1,0 +1,205 @@
+{
+  "planId": "plan_8d9de3fc-191",
+  "prompt": "audit a repo for missing input validation",
+  "taskGraph": {
+    "root": {
+      "id": "root",
+      "prompt": "audit a repo for missing input validation",
+      "complexity": "high",
+      "estimatedTotalAgents": 25,
+      "estimatedCostUSD": 0,
+      "estimatedDurationMinutes": 4
+    },
+    "tasks": [
+      {
+        "id": "discover",
+        "description": "Enumerate the concrete targets for: audit a repo for missing input validation",
+        "type": "discovery",
+        "dependencies": [],
+        "parallelizable": false,
+        "role": "discovery-agent",
+        "expectedOutputSchema": {
+          "items": "array"
+        },
+        "estimatedTokens": 6000
+      },
+      {
+        "id": "work",
+        "description": "Analyze ONE target for: audit a repo for missing input validation",
+        "type": "analysis",
+        "dependencies": [
+          "discover"
+        ],
+        "parallelizable": true,
+        "fanoutSource": "discover.items",
+        "role": "analysis-agent",
+        "expectedOutputSchema": {
+          "findings": "array",
+          "confidence": "number"
+        },
+        "estimatedTokens": 6000
+      },
+      {
+        "id": "verify",
+        "description": "Adversarially verify the aggregated results: hunt false positives, challenge severity, find gaps.",
+        "type": "verification",
+        "dependencies": [
+          "work"
+        ],
+        "parallelizable": false,
+        "role": "false-positive-hunter",
+        "expectedOutputSchema": {
+          "verdicts": "array",
+          "confidence": "number"
+        },
+        "estimatedTokens": 6000
+      },
+      {
+        "id": "synthesize",
+        "description": "Merge verified results into the final deliverable.",
+        "type": "synthesis",
+        "dependencies": [
+          "verify"
+        ],
+        "parallelizable": false,
+        "role": "synthesis-agent",
+        "expectedOutputSchema": {
+          "summary": "string",
+          "details": "array"
+        },
+        "estimatedTokens": 6000
+      }
+    ]
+  },
+  "topology": "hybrid",
+  "roles": [
+    {
+      "id": "discovery-agent",
+      "title": "Discovery Agent",
+      "systemPrompt": "You enumerate targets for a larger task you cannot see. Return ONLY JSON matching the requested schema: a list of concrete items (files, endpoints, modules, questions). Do not explain. Do not solve.",
+      "allowedTools": [
+        "read_file",
+        "search",
+        "glob"
+      ],
+      "temperature": 0,
+      "maxTokens": 4000,
+      "outputSchema": {
+        "items": "array"
+      }
+    },
+    {
+      "id": "analysis-agent",
+      "title": "Analysis Agent",
+      "systemPrompt": "You analyze EXACTLY ONE item handed to you. Be thorough but concise. Return ONLY JSON matching the requested schema. Never invent facts; mark uncertainty with a confidence number between 0 and 1.",
+      "allowedTools": [
+        "read_file",
+        "search"
+      ],
+      "temperature": 0,
+      "maxTokens": 4000,
+      "outputSchema": {
+        "findings": "array",
+        "confidence": "number"
+      }
+    },
+    {
+      "id": "false-positive-hunter",
+      "title": "False-Positive Hunter",
+      "systemPrompt": "You are a skeptic reviewing findings produced by another agent. Assume a meaningful fraction are wrong. For each finding decide keep/reject with a reason. Return ONLY JSON matching the requested schema.",
+      "allowedTools": [
+        "read_file"
+      ],
+      "temperature": 0.1,
+      "maxTokens": 4000,
+      "outputSchema": {
+        "verdicts": "array",
+        "confidence": "number"
+      }
+    },
+    {
+      "id": "synthesis-agent",
+      "title": "Synthesis Agent",
+      "systemPrompt": "You merge verified results into one final deliverable. Cite which inputs support each conclusion. Return ONLY JSON matching the requested schema.",
+      "allowedTools": [],
+      "temperature": 0.2,
+      "maxTokens": 8000,
+      "outputSchema": {
+        "summary": "string",
+        "details": "array"
+      }
+    }
+  ],
+  "strategy": {
+    "concurrency": {
+      "max": 4,
+      "default": 4
+    },
+    "checkpoint": {
+      "intervalSeconds": 30,
+      "onPhaseComplete": true
+    },
+    "retry": {
+      "maxAttempts": 3,
+      "backoff": "exponential",
+      "retryableErrors": [
+        "rate_limit",
+        "timeout",
+        "service_unavailable"
+      ]
+    },
+    "budget": {
+      "maxTokens": 1000000,
+      "maxCostUSD": 50,
+      "alertAtPercent": 80,
+      "model": "deepseek-v4-flash-free"
+    },
+    "timeouts": {
+      "perAgent": 120,
+      "perPhase": 600,
+      "total": 3600
+    },
+    "safety": {
+      "requireApprovalFor": [],
+      "autoApproveReadOnly": true,
+      "dryRun": false,
+      "blockedCommands": [
+        "rm -rf /",
+        "rm -rf ~",
+        "sudo ",
+        "chmod -R 777 /",
+        "mkfs",
+        "dd if=",
+        ":(){",
+        "> /dev/sda",
+        "Remove-Item -Recurse -Force",
+        "rd /s",
+        "rmdir /s",
+        "del /f",
+        "del /q",
+        "format ",
+        "diskpart",
+        "Format-Volume",
+        "Clear-Disk",
+        "reg delete",
+        "Set-ExecutionPolicy"
+      ]
+    },
+    "git": {
+      "createBranch": true,
+      "branchPrefix": "odw/",
+      "commitCheckpoints": false,
+      "autoCreateBranch": true
+    }
+  },
+  "script": "/**\n * open-dynamic-workflows orchestration script\n * topology: hybrid\n * prompt: audit a repo for missing input validation\n */\n\nasync function execute(context) {\n  const results = {};\n  // ─── Discover (discovery) ───\n  phase(\"Discover\", { estimatedAgents: 1 });\n  results[\"discover\"] = await agent({ role: \"discovery-agent\", prompt: \"Enumerate the concrete targets for: audit a repo for missing input validation\", schema: {\"items\":\"array\"}, maxTokens: 4000, timeout: 120 });\n  await checkpoint({ phase: \"discover\", data: results[\"discover\"] });\n\n  // ─── Work (analysis) ───\n  phase(\"Work\", { estimatedAgents: undefined });\n  {\n    const items = (results[\"discover\"] && results[\"discover\"].items) || [];\n    log('Work: fanning out over ' + items.length + ' items');\n    const work_raw = await parallel(\n      items.map((item) => () => agent({ role: \"analysis-agent\", prompt: \"Analyze ONE target for: audit a repo for missing input validation Item: \" + JSON.stringify(item), schema: {\"findings\":\"array\",\"confidence\":\"number\"}, maxTokens: 4000, timeout: 120 }).catch((e) => ({ __odw_failed: true, error: String((e && e.message) || e) }))),\n      { maxConcurrency: 4 }\n    );\n    const work_ok = work_raw.filter((r) => !(r && r.__odw_failed));\n    const work_dropped = work_raw.length - work_ok.length;\n    if (work_dropped > 0) log('Work: ' + work_dropped + '/' + work_raw.length + ' items failed and were dropped', 'warn');\n    results[\"work\"] = work_ok;\n  }\n  await checkpoint({ phase: \"work\", data: results[\"work\"] });\n\n  // ─── Verify (verification) ───\n  phase(\"Verify\", { estimatedAgents: 1 });\n  results[\"verify\"] = await verify({\n    target: results[\"work\"],\n    mode: 'adversarial',\n    critics: [\n      { role: 'false-positive-hunter', prompt: 'Find false positives in these findings. Assume some are wrong.' },\n      { role: 'severity-validator', prompt: 'Challenge the severity ratings of these findings.' },\n      { role: 'completeness-checker', prompt: 'What is MISSING from these findings?' },\n    ],\n    consensusThreshold: 2,\n    minConfidence: 0.8,\n  });\n  await checkpoint({ phase: \"verify\", data: results[\"verify\"] });\n\n  // ─── Synthesize (synthesis) ───\n  phase(\"Synthesize\", { estimatedAgents: 1 });\n  try {\n    results[\"synthesize\"] = await agent({ role: \"synthesis-agent\", prompt: \"Merge verified results into the final deliverable.\" + ' Context: ' + JSON.stringify({ verify: results[\"verify\"] }).slice(0, 20000), schema: {\"summary\":\"string\",\"details\":\"array\"}, maxTokens: 8000, timeout: 120 });\n  } catch (e) {\n    if (e && (e.code === 'aborted' || e.code === 'paused')) throw e;\n    log('synthesis could not produce structured output (' + e.message + ') — returning partial results', 'warn');\n    results[\"synthesize\"] = { summary: 'Workflow completed with partial results; the final synthesis step could not be formatted by the model.', partial: results[\"verify\"], synthesisError: String(e.message) };\n  }\n  await checkpoint({ phase: \"synthesize\", data: results[\"synthesize\"] });\n\n  return results[\"synthesize\"];\n}\n\nmodule.exports = { execute };\n",
+  "estimate": {
+    "totalAgents": 25,
+    "maxConcurrent": 4,
+    "tokens": 150000,
+    "costUSD": 0,
+    "minutes": 4
+  },
+  "createdAt": "2026-06-06T01:57:03.682Z",
+  "hasVerification": true
+}

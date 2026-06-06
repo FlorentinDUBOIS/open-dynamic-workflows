@@ -31,7 +31,7 @@ export default [
     },
   },
   {
-    files: ['packages/vscode-extension/**/*.js', 'packages/codex-adapter/**/*.js', 'packages/antigravity-adapter/**/*.js'],
+    files: ['packages/vscode-extension/**/*.js', 'packages/codex-adapter/**/*.js', 'packages/antigravity-adapter/**/*.js', 'packages/openclaw-adapter/**/*.js'],
     languageOptions: {
       sourceType: 'commonjs',
     },
