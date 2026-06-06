@@ -51,6 +51,8 @@ export default [
         phase: 'readonly',
         log: 'readonly',
         checkpoint: 'readonly',
+        compact: 'readonly',
+        summarize: 'readonly',
         budget: 'readonly',
         args: 'readonly',
         context: 'readonly',

@@ -67,6 +67,7 @@ flowchart LR
 
 - **It survives.** State lives in SQLite with write-ahead logging. Kill the daemon mid-run, start it with `--resume`, and completed agents come back from cache — only unfinished work re-runs. A failed agent is dropped, not fatal; the run keeps going. Node identity is `sha1(workflow | phase | role | prompt)`, so replay is exact.
 - **It doesn't trust its own agents.** A finding isn't a finding until a panel of skeptics has tried to knock it down. The `verify` primitive runs critics that hunt false positives, challenge severity, and look for what's missing, then keeps only what survives a quorum.
+- **It won't blow the context window.** Each agent gets a fresh window and only its distilled result crosses back — the same isolation big harnesses use to run huge tasks. On top of that, every call is measured against the model's real context window and, if it would overflow, the input is compacted by dropping *whole* structural elements (never a mid-JSON cut). A provider "context too long" error is caught and self-healed with a bounded compact-and-retry instead of crashing the run — so it holds up on small and free models, not just 200K-token ones.
 
 ---
 

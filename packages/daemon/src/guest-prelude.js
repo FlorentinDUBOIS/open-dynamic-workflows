@@ -85,6 +85,46 @@ function loop(condition, body, opts) {
   return step(undefined);
 }
 
+// compact(value, opts): structure-preserving compaction to a char budget. Drops
+// WHOLE array items / object properties (never mid-JSON) via the host bridge, so
+// the result always re-parses. Cheap guest-side short-circuit returns the value
+// untouched when it already fits — no host round-trip, byte-identical output.
+function compact(value, opts) {
+  var maxChars = (opts && opts.maxChars) || 20000;
+  try {
+    var s = JSON.stringify(value);
+    if (s === undefined || s.length <= maxChars) return Promise.resolve(value);
+  } catch (e) { /* unserializable: let the host decide */ }
+  return __callAsync(__host_compact, { value: value, opts: { maxChars: maxChars } });
+}
+
+// summarize(text, opts): SEMANTIC (lossy) compression via map-reduce over the
+// normal agent() bridge — so every call is budget-counted, cached, and abortable
+// (no untracked side-channel). Opt-in; use for prose, never for IDs/schemas that
+// must survive verbatim (prefer compact() there). Returns a string.
+function summarize(text, opts) {
+  opts = opts || {};
+  var s = typeof text === "string" ? text : JSON.stringify(text);
+  if (s === undefined) return Promise.resolve("");
+  var maxChars = opts.maxChars || 4000;
+  if (s.length <= maxChars) return Promise.resolve(s);
+  var chunkSize = opts.chunkSize || 12000;
+  var instr = opts.instructions ||
+    "Summarize the following, preserving key facts, names, numbers, file paths, and decisions. Be concise.";
+  function ask(part) {
+    return agent({ role: opts.role || "summarizer", prompt: instr + "\n\n" + part, model: opts.model, maxTokens: opts.maxTokens || 1000 })
+      .then(function (r) { return typeof r === "string" ? r : (r && r.summary) || JSON.stringify(r); })
+      .catch(function () { return String(part).slice(0, 1000); });
+  }
+  var chunks = [];
+  for (var i = 0; i < s.length; i += chunkSize) chunks.push(s.slice(i, i + chunkSize));
+  return parallel(chunks.map(function (c) { return function () { return ask(c); }; })).then(function (parts) {
+    var joined = parts.join("\n");
+    if (joined.length <= maxChars) return joined;        // reduced enough
+    return ask(joined.slice(0, chunkSize * 2));          // one reduce pass over the summaries
+  });
+}
+
 function verify(config) {
   if (!config || config.target === undefined) throw new Error("verify({target,...}) requires a target");
   var mode = config.mode || "adversarial";
@@ -92,56 +132,62 @@ function verify(config) {
   if (!critics.length) throw new Error("verify: at least one critic is required");
   var threshold = config.consensusThreshold || Math.ceil(critics.length / 2);
   var minConfidence = config.minConfidence || 0;
-  var targetJson = JSON.stringify(config.target).slice(0, 60000);
+  var maxChars = config.maxChars || 60000;
 
-  var calls = critics.map(function (critic) {
-    return function () {
-      return agent({
-        role: critic.role || "false-positive-hunter",
-        prompt: (critic.prompt || "Critique these findings.") +
-          " Findings to review: " + targetJson +
-          ' Return JSON: {"approved": boolean, "confidence": number between 0 and 1, "critique": string, "rejectedItems": array}',
-        schema: {
-          type: "object",
-          properties: {
-            approved: { type: "boolean" },
-            confidence: { type: "number" },
-            critique: { type: "string" },
-            rejectedItems: { type: "array" }
+  // Structure-preserving compaction of the target BEFORE building critic prompts
+  // (await first — compact() is async, so a one-liner here would serialize a
+  // Promise into every prompt). Byte-identical when the target fits in maxChars.
+  return compact(config.target, { maxChars: maxChars }).then(function (compacted) {
+    var targetJson = JSON.stringify(compacted);
+    var calls = critics.map(function (critic) {
+      return function () {
+        return agent({
+          role: critic.role || "false-positive-hunter",
+          prompt: (critic.prompt || "Critique these findings.") +
+            " Findings to review: " + targetJson +
+            ' Return JSON: {"approved": boolean, "confidence": number between 0 and 1, "critique": string, "rejectedItems": array}',
+          schema: {
+            type: "object",
+            properties: {
+              approved: { type: "boolean" },
+              confidence: { type: "number" },
+              critique: { type: "string" },
+              rejectedItems: { type: "array" }
+            },
+            required: ["approved", "confidence"]
           },
-          required: ["approved", "confidence"]
-        },
-        model: critic.model,
-        maxTokens: critic.maxTokens || 4000
-      }).catch(function (e) {
-        return { approved: false, confidence: 0, critique: "critic failed: " + e.message, rejectedItems: [] };
-      });
-    };
-  });
-
-  return parallel(calls).then(function (verdicts) {
-    var confident = verdicts.filter(function (v) { return (v.confidence || 0) >= minConfidence; });
-    var approvals = confident.filter(function (v) { return v.approved; }).length;
-    var rejections = confident.filter(function (v) { return !v.approved; }).length;
-    // consensus: needs a positive quorum of confident approvals.
-    // adversarial: target survives unless a quorum of confident critics REJECTS it
-    //   (an errored/unconfident critic cannot sink an adversarial pass, but does
-    //    weaken a consensus pass — that asymmetry is the point of the two modes).
-    var passed = mode === "consensus" ? approvals >= threshold : rejections < threshold;
-    var rejectedItems = [];
-    confident.forEach(function (v) {
-      (v.rejectedItems || []).forEach(function (item) { rejectedItems.push(item); });
+          model: critic.model,
+          maxTokens: critic.maxTokens || 4000
+        }).catch(function (e) {
+          return { approved: false, confidence: 0, critique: "critic failed: " + e.message, rejectedItems: [] };
+        });
+      };
     });
-    return {
-      passed: passed,
-      mode: mode,
-      approvals: approvals,
-      rejections: rejections,
-      threshold: threshold,
-      rejectedItems: rejectedItems,
-      verdicts: verdicts,
-      target: config.target
-    };
+
+    return parallel(calls).then(function (verdicts) {
+      var confident = verdicts.filter(function (v) { return (v.confidence || 0) >= minConfidence; });
+      var approvals = confident.filter(function (v) { return v.approved; }).length;
+      var rejections = confident.filter(function (v) { return !v.approved; }).length;
+      // consensus: needs a positive quorum of confident approvals.
+      // adversarial: target survives unless a quorum of confident critics REJECTS it
+      //   (an errored/unconfident critic cannot sink an adversarial pass, but does
+      //    weaken a consensus pass — that asymmetry is the point of the two modes).
+      var passed = mode === "consensus" ? approvals >= threshold : rejections < threshold;
+      var rejectedItems = [];
+      confident.forEach(function (v) {
+        (v.rejectedItems || []).forEach(function (item) { rejectedItems.push(item); });
+      });
+      return {
+        passed: passed,
+        mode: mode,
+        approvals: approvals,
+        rejections: rejections,
+        threshold: threshold,
+        rejectedItems: rejectedItems,
+        verdicts: verdicts,
+        target: config.target
+      };
+    });
   });
 }
 

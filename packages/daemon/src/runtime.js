@@ -8,7 +8,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { mergeStrategy, costFor } from 'odw-core';
+import { mergeStrategy, costFor, compactValue } from 'odw-core';
 import { createSandbox } from './sandbox.js';
 import { createBudget } from './budget.js';
 import { createToolExecutor } from './tools.js';
@@ -158,6 +158,11 @@ export function createRuntime(deps) {
               schema: job.schema,
               maxTokens: job.maxTokens,
               temperature: job.temperature,
+              // Per-workflow context-window policy. The queue is a daemon-wide
+              // singleton, so the strategy must travel ON the job to reach it —
+              // this is what makes a per-run `context.enabled:false` (or custom
+              // safetyFactor) actually take effect at the call site.
+              context: strategy.context,
             },
             abort.signal
           );
@@ -196,6 +201,18 @@ export function createRuntime(deps) {
       },
 
       tool: (payload) => toolExecutor(payload),
+
+      // Structure-preserving compaction for guest scripts (verify(), generated
+      // dependency-context injection): drops WHOLE elements to fit a char budget
+      // instead of slicing mid-JSON. Identity when the value already fits.
+      compact: async (payload) => {
+        const maxChars = (payload?.opts && Number(payload.opts.maxChars)) || 20000;
+        const { value, manifest } = compactValue(payload?.value ?? null, maxChars);
+        if (manifest.droppedCount > 0) {
+          emit(workflowId, 'context_compacted', { phase: state.currentPhase, manifest });
+        }
+        return value;
+      },
 
       checkpoint: async (data) => {
         store.insertCheckpoint({

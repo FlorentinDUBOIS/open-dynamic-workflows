@@ -23,6 +23,12 @@ export function defaultStrategy() {
       retryableErrors: ['rate_limit', 'timeout', 'service_unavailable'],
     },
     budget: { maxTokens: 1_000_000, maxCostUSD: 50, alertAtPercent: 80, model: 'claude-sonnet-4-6' },
+    // Context-window management. The guard is a pure pass-through whenever the
+    // input already fits, and proactive compaction is skipped entirely for
+    // unknown-window models (reactive self-heal still protects them on a real
+    // provider overflow) — so enabling it by default changes no observable
+    // output for today's large-window deployments.
+    context: { enabled: true, safetyFactor: 0.9, reservedOutputTokens: 4096, maxCompactAttempts: 3, overflowRetry: true },
     timeouts: { perAgent: 120, perPhase: 600, total: 3600 },
     safety: {
       requireApprovalFor: ['write_file', 'run_bash', 'git_commit'],
@@ -47,6 +53,9 @@ export function mergeStrategy(overrides) {
   merged.budget.maxCostUSD = clamp(merged.budget.maxCostUSD, 0, CEILINGS.maxCostUSD);
   merged.budget.alertAtPercent = clamp(merged.budget.alertAtPercent, 1, 100);
   merged.retry.maxAttempts = clamp(merged.retry.maxAttempts, 1, 10);
+  merged.context.safetyFactor = clamp(merged.context.safetyFactor, 0.5, 0.99);
+  merged.context.reservedOutputTokens = clamp(merged.context.reservedOutputTokens, 256, CEILINGS.maxTokens);
+  merged.context.maxCompactAttempts = clamp(merged.context.maxCompactAttempts, 1, 5);
   merged.timeouts.perAgent = clamp(merged.timeouts.perAgent, 1, CEILINGS.totalSeconds);
   merged.timeouts.perPhase = clamp(merged.timeouts.perPhase, merged.timeouts.perAgent, CEILINGS.totalSeconds);
   merged.timeouts.total = clamp(merged.timeouts.total, merged.timeouts.perPhase, CEILINGS.totalSeconds);

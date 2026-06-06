@@ -24,6 +24,7 @@ const FAIL = (error) =>
  *     agent: (payload: any) => Promise<any>,
  *     tool: (payload: any) => Promise<any>,
  *     checkpoint: (payload: any) => Promise<any>,
+ *     compact?: (payload: {value: any, opts: object}) => Promise<any>,
  *     log?: (payload: {message: string, level: string}) => void,
  *     phase?: (payload: {name: string, meta: object}) => void,
  *     budget?: () => any,
@@ -114,6 +115,9 @@ export async function createSandbox(options) {
   installAsync('__host_agent', bridges.agent);
   installAsync('__host_tool', bridges.tool ?? (() => Promise.reject(new Error('tools are not available in this run'))));
   installAsync('__host_checkpoint', bridges.checkpoint ?? (() => Promise.resolve(null)));
+  // Compaction bridge; defaults to identity so sandboxes built without it (and
+  // older compiled scripts that never call compact()) behave exactly as before.
+  installAsync('__host_compact', bridges.compact ?? ((payload) => Promise.resolve(payload?.value ?? null)));
   installSync('__host_log', (p) => {
     bridges.log?.(p);
     return null;

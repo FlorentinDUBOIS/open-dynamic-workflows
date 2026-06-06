@@ -64,13 +64,70 @@ export function createAnthropicProvider({ apiKey, baseURL = 'https://api.anthrop
   };
 }
 
+/**
+ * Provider-spanning phrases that signal a context-window overflow on an HTTP 400.
+ * Anthropic exposes NO machine-readable code — 'prompt is too long' is the only
+ * signal — and self-hosted OpenAI-compatible servers (vLLM/sglang/Gemini) ship
+ * their own phrasings, so the set is broad and lives in one editable place.
+ */
+export const CONTEXT_OVERFLOW_PHRASES = [
+  'context_length_exceeded',
+  'context length',
+  'maximum context length',
+  'context window',
+  'context size',
+  'too many tokens',
+  'token limit',
+  'prompt is too long',
+  'input is too long',
+  'input length and max_tokens exceed context limit',
+  'input token count exceeds',
+  'is longer than the model',
+  'reduce the length of the messages',
+];
+
 export function httpError(provider, status, body) {
-  const err = new Error(`${provider} HTTP ${status}: ${String(body).slice(0, 300)}`);
+  const text = String(body ?? '');
+  const err = new Error(`${provider} HTTP ${status}: ${text.slice(0, 300)}`);
   err.status = status;
-  err.code =
-    status === 429 ? 'rate_limit'
-    : status === 408 || status === 504 ? 'timeout'
-    : status >= 500 ? 'service_unavailable'
-    : 'request_failed';
+
+  if (status === 429) err.code = 'rate_limit';
+  else if (status === 408 || status === 504) err.code = 'timeout';
+  else if (status >= 500) err.code = 'service_unavailable';
+  else if ((status === 400 || status === 413) && isContextOverflow(text)) {
+    // Sub-classify the recoverable 400 so the queue self-heals (compact + retry)
+    // instead of treating it as a generic non-retryable failure (the hermes-agent
+    // #813 bug). Auth/schema 400s stay 'request_failed' and never enter the loop.
+    err.code = 'context_overflow';
+    const nums = parseOverflowTokens(text);
+    if (nums.requestedTokens) err.requestedTokens = nums.requestedTokens;
+    if (nums.limitTokens) err.limitTokens = nums.limitTokens;
+  } else err.code = 'request_failed';
+
   return err;
+}
+
+function isContextOverflow(body) {
+  const lower = body.toLowerCase();
+  return CONTEXT_OVERFLOW_PHRASES.some((p) => lower.includes(p));
+}
+
+/**
+ * Best-effort extraction of the limit + requested token counts from the error
+ * message, enabling a single corrective trim instead of blind halving. Brittle
+ * by nature (phrasing varies by provider) so callers MUST tolerate undefined.
+ */
+function parseOverflowTokens(body) {
+  // Anthropic: "prompt is too long: 233153 tokens > 200000 maximum"
+  const gt = body.match(/(\d[\d,]*)\s*tokens?\s*>\s*(\d[\d,]*)/i);
+  if (gt) return { requestedTokens: toInt(gt[1]), limitTokens: toInt(gt[2]) };
+  // OpenAI: "maximum context length is 128000 tokens. However, you requested 130000 tokens"
+  const max = body.match(/maximum context length is (\d[\d,]*)/i);
+  const req = body.match(/you requested (\d[\d,]*)/i);
+  return { limitTokens: max ? toInt(max[1]) : undefined, requestedTokens: req ? toInt(req[1]) : undefined };
+}
+
+function toInt(s) {
+  const n = Number(String(s).replace(/,/g, ''));
+  return Number.isFinite(n) ? n : undefined;
 }

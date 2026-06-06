@@ -102,10 +102,14 @@ function emitTask(task, roleById, strategy) {
     lines.push(`    minConfidence: 0.8,`);
     lines.push(`  });`);
   } else {
+    // Inject upstream results as context, compacted to a char budget by DROPPING
+    // WHOLE elements (structure-preserving) rather than the old blind
+    // .slice(0, 20000) that could cut mid-JSON. compact() is identity when the
+    // serialized deps already fit 20000 chars, so small payloads are unchanged.
     const depsContext = task.dependencies.length
-      ? ` + ' Context: ' + JSON.stringify({ ${task.dependencies
+      ? ` + ' Context: ' + JSON.stringify(await compact({ ${task.dependencies
           .map((d) => `${sanitizeKey(d)}: results[${JSON.stringify(d)}]`)
-          .join(', ')} }).slice(0, 20000)`
+          .join(', ')} }, { maxChars: 20000 }))`
       : '';
     const call = `${baseAgentCall(`${JSON.stringify(task.description)}${depsContext}`)}`;
     if (task.type === 'synthesis') {
