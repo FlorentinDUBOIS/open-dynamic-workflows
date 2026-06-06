@@ -34,7 +34,10 @@ export const PRICING = {
  */
 export function costFor(model, tokensInput, tokensOutput) {
   const id = String(model ?? '');
-  if (id.startsWith('ollama:') || id.startsWith('ollama/') || /-free$/.test(id)) return 0;
+  // Local/free models and the embedded "host:" backend cost $0 to ODW — the
+  // host harness's own auth pays for host: calls, so ODW must not bill them.
+  // (Runaway protection on the embedded path comes from the token cap, not cost.)
+  if (id.startsWith('ollama:') || id.startsWith('ollama/') || id.startsWith('host:') || /-free$/.test(id)) return 0;
   // exact id, then date-suffix-stripped alias (claude-haiku-4-5-20251001 → claude-haiku-4-5)
   const rate =
     PRICING[id] ??

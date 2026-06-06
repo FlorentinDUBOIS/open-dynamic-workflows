@@ -2,6 +2,15 @@
 
 This project does not use version numbers. Entries are marked by milestone.
 
+## Native OpenCode mode — the engine runs on your host model (no daemon, no second key)
+
+Closes the biggest seam in the "seamless like Claude Code" goal: ODW used to require its own external provider key + a running daemon even when you were already inside OpenCode. Now, on OpenCode, ODW's *real* engine runs embedded in the plugin and dispatches every `agent()` call through OpenCode's already-configured model.
+
+- **Embedded orchestrator** (`odw-daemon/embedded`) — the daemon's composition root (queue + runtime + WASM sandbox) minus the HTTP server and SQLite, with a pure-JS in-memory store, so a host plugin can run the full engine in-process. odw-core, the sandbox, the primitives, the context guard, retries and budget are reused byte-for-byte.
+- **Host provider** (`providers/host.js`) — a one-function agent backend: anything that takes a prompt and returns text can back `agent()`. It estimates token usage when the host hides it, so the **budget hard-stop still trips** (an embedded run can't loop on your own auth unbounded).
+- **OpenCode plugin** now runs embedded by default: on a `workflow:` / `ultracode` / `/deep-research` trigger it builds the engine and routes sub-agents to `client.session.prompt()` (model omitted → inherits your configured model/auth; structured output via the existing schema-suffix cascade; a round-robin child-session pool for real parallel fan-out). Daemon and prompt-directive remain ordered fallbacks; the single-file drop-in degrades cleanly when the engine deps aren't installed.
+- **Honest platform matrix.** Verified via live-docs research: only OpenCode exposes a host-model API to extensions. Codex is MCP-client-only (no host-model API, no sampling); Antigravity locks model access to its internal engine; MCP "sampling" is deprecated (SEP-2577) and unsupported by all three. So the Codex/Antigravity skills now state plainly that the no-key path is the host orchestrating itself (not the ODW engine) and the full engine needs the daemon + one key — no pretend-keyless claims.
+
 ## Context-window hardening (small-model lifeline)
 
 Mirrors how Claude Code runs arbitrarily large tasks without exhausting the model window — sub-agent isolation and filesystem-as-memory already existed here; this adds the missing **compaction** layer so the engine never overflows a model's input window, which is the difference between a run surviving and crashing on small/free models.

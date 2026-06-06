@@ -162,15 +162,15 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-The daemon is the engine; the adapters are how your existing tool talks to it over a localhost API. Each is a separate package — install only what you use.
+The adapters are how your existing tool drives the engine. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API. Each is a separate package — install only what you use.
 
-| Editor / agent | How it connects | When the daemon is off |
+| Editor / agent | How it connects | No-key, no-daemon native mode? |
 | --- | --- | --- |
-| **OpenCode** | drop-in plugin (`"plugin": ["odw-opencode"]` in `opencode.json`) — triggers on "run a workflow", `ultracode`, or `/deep-research` | falls back to OpenCode's own sub-agents, capped at the platform limit |
-| **Codex · Antigravity · OpenClaw** | a skill folder (`SKILL.md` + a zero-dependency bridge script) that teaches the agent to plan first, then call the daemon — the OpenClaw one is ClawHub-publishable | the agent orchestrates natively, within platform limits |
-| **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | shows an install hint |
+| **OpenCode** | drop-in plugin (`"plugin": ["odw-opencode"]` in `opencode.json`) — triggers on "run a workflow", `ultracode`, or `/deep-research` | **Yes** — runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`). No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume.) |
+| **Codex · Antigravity · OpenClaw** | a skill folder (`SKILL.md` + a zero-dependency bridge script) that teaches the agent to plan first, then call the daemon — the OpenClaw one is ClawHub-publishable | **No** — these hosts expose no model API to extensions, so the keyless path is the host orchestrating itself natively (not the ODW engine); the full engine needs the daemon + one key |
+| **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | n/a (UI client over the daemon API) |
 
-Honest note: there is no Codex plugin marketplace and no public Antigravity automation API. Those adapters use the extension points those tools actually have — skills, `AGENTS.md`, saved workflows — and say so out loud.
+Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex is MCP-client-only with no host-model API; Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by all three. Those adapters use the extension points those tools actually have — skills, `AGENTS.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 
 ---
 

@@ -13,6 +13,10 @@
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.2.0"
   },
+  "dependencies": {
+    "odw-core": "^0.1.0",
+    "odw-daemon": "^0.1.0"
+  },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.2.27"
   },

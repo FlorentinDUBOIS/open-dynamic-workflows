@@ -4,6 +4,10 @@
   "description": "Local orchestration daemon for open-dynamic-workflows: sandboxed scripts, 100+ concurrent agents, crash-resumable state.",
   "type": "module",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./embedded": "./src/embedded.js"
+  },
   "bin": {
     "odw-daemon": "src/cli.js"
   },

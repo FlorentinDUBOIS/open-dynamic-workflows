@@ -143,6 +143,40 @@ function planSummary(plan) {
   ].join(' · ');
 }
 
+/**
+ * Run the REAL ODW engine embedded IN-PROCESS, dispatching every agent() call
+ * through OpenCode's own model via the SDK (no daemon, no external key). Lazily
+ * imports the engine so the single-file drop-in (which lacks the deps) cleanly
+ * degrades to the daemon/directive paths. Returns a result message, or null if
+ * embedded mode is unavailable so the caller can fall back.
+ */
+async function runEmbedded(client, effective, directory) {
+  let createEmbeddedOrchestrator, createOpencodeBackend;
+  try {
+    ({ createEmbeddedOrchestrator } = await import('odw-daemon/embedded'));
+    ({ createOpencodeBackend } = await import('./host-provider.js'));
+  } catch {
+    return null; // embedded engine deps not installed (drop-in mode)
+  }
+  const backend = createOpencodeBackend(client, { poolSize: 4 });
+  try {
+    const orchestrator = createEmbeddedOrchestrator({ invoke: backend.invoke, maxConcurrency: 4 });
+    const { workflowId, result } = await orchestrator.run(effective.cleanPrompt, { cwd: directory });
+    const rendered = typeof result === 'string'
+      ? result
+      : '```json\n' + JSON.stringify(result, null, 2).slice(0, 6000) + '\n```';
+    return [
+      `[open-dynamic-workflows · ${effective.mode} · EMBEDDED on your OpenCode model — no daemon, no extra API key]`,
+      `Workflow ${workflowId} ran ODW's real multi-agent engine (plan → parallel agents → adversarial verify → synthesize) through your already-configured OpenCode model.`,
+      `Synthesized result:`,
+      rendered,
+      `Present this synthesized result to the user. Do NOT redo the work yourself.`,
+    ].join('\n');
+  } finally {
+    await backend.dispose();
+  }
+}
+
 function fallbackDirective(cleanPrompt, mode) {
   return [
     `[open-dynamic-workflows · ${mode} trigger · daemon OFFLINE — native fallback]`,
@@ -158,7 +192,7 @@ function fallbackDirective(cleanPrompt, mode) {
 
 // ── the plugin ───────────────────────────────────────────────────────────────
 
-export const OdwPlugin = async ({ directory }) => {
+export const OdwPlugin = async ({ directory, client }) => {
   const port = resolveDaemonPort();
   const daemon = createDaemonClient(port);
 
@@ -177,6 +211,23 @@ export const OdwPlugin = async ({ directory }) => {
           : null;
       if (!effective) return;
 
+      // PRIMARY path — run ODW's real engine through OpenCode's OWN model (no
+      // daemon, no second key). Only available when the SDK exposes session.prompt
+      // and the embedded engine deps are installed; any failure falls through.
+      if (client?.session?.prompt) {
+        try {
+          const embedded = await runEmbedded(client, effective, directory);
+          if (embedded) { textPart.text = embedded; return; }
+        } catch (error) {
+          textPart.text = [
+            `[open-dynamic-workflows · embedded run failed: ${String(error.message).slice(0, 200)} — falling back]`,
+            fallbackDirective(effective.cleanPrompt, effective.mode),
+          ].join('\n');
+          return;
+        }
+      }
+
+      // SECONDARY path — the local daemon (its own configured key, full power).
       const health = await daemon.health();
       if (!health) {
         textPart.text = fallbackDirective(effective.cleanPrompt, effective.mode);

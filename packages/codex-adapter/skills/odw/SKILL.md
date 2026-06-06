@@ -7,6 +7,15 @@ description: Dynamic multi-agent workflows — plan first, then orchestrate para
 
 You orchestrate large tasks through an explicit plan and a local daemon instead of improvising. The scripts referenced below live next to this skill in `scripts/`.
 
+## Model & API key (read this first)
+
+Codex exposes **no API for an extension to invoke its own model**, so — unlike the OpenCode plugin, which runs ODW's real engine *through* OpenCode's configured model with no extra key — there are exactly two honest paths here:
+
+- **No-key path (Native fallback):** *you, Codex,* orchestrate the task with your own model and native subagents (platform-capped, ~6 concurrent). This uses no extra key, but it is **not** the ODW engine — no sandbox, no 100-way fan-out, no crash-resume, no budget hard-stop.
+- **Full-engine path (Daemon):** the real ODW engine runs in the local daemon, which uses **its own** provider key in `~/.odw/config.json` (Anthropic / OpenAI-compatible / Ollama — Ollama is keyless/local). This is the only way to get the full engine on Codex today.
+
+There is no middle option unless/until Codex ships a host-model API or MCP sampling. Pick the path based on whether the daemon is up (Step 0).
+
 ## Step 0 — Daemon check
 
 Run: `node scripts/daemon-bridge.js --check`
