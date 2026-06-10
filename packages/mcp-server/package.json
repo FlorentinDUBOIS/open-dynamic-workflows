@@ -1,0 +1,19 @@
+{
+  "name": "odw-mcp-server",
+  "version": "0.1.0",
+  "description": "Universal MCP server for open-dynamic-workflows: plan, run and monitor multi-agent workflows from any MCP client (Claude Desktop, Cursor, Codex, ...).",
+  "type": "module",
+  "bin": {
+    "odw-mcp": "src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
