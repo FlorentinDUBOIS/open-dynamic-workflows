@@ -8,6 +8,8 @@ const CEILINGS = {
   maxTokens: 10_000_000,
   maxCostUSD: 500,
   totalSeconds: 6 * 3600,
+  maxReplans: 5,
+  replanDepth: 2,
 };
 
 /**
@@ -30,6 +32,10 @@ export function defaultStrategy() {
     // output for today's large-window deployments.
     context: { enabled: true, safetyFactor: 0.9, reservedOutputTokens: 4096, maxCompactAttempts: 3, overflowRetry: true },
     timeouts: { perAgent: 120, perPhase: 600, total: 3600 },
+    // Mid-execution replanning bounds: maxReplans caps total replan() calls per
+    // run; maxDepth caps nesting (1 = the root script may replan, its sub-script
+    // may not). Both are run-wide hard stops enforced by the runtime bridge.
+    replan: { maxReplans: 2, maxDepth: 1 },
     safety: {
       requireApprovalFor: ['write_file', 'run_bash', 'git_commit'],
       autoApproveReadOnly: true,
@@ -56,6 +62,8 @@ export function mergeStrategy(overrides) {
   merged.context.safetyFactor = clamp(merged.context.safetyFactor, 0.5, 0.99);
   merged.context.reservedOutputTokens = clamp(merged.context.reservedOutputTokens, 256, CEILINGS.maxTokens);
   merged.context.maxCompactAttempts = clamp(merged.context.maxCompactAttempts, 1, 5);
+  merged.replan.maxReplans = clamp(merged.replan.maxReplans, 0, CEILINGS.maxReplans);
+  merged.replan.maxDepth = clamp(merged.replan.maxDepth, 0, CEILINGS.replanDepth);
   merged.timeouts.perAgent = clamp(merged.timeouts.perAgent, 1, CEILINGS.totalSeconds);
   merged.timeouts.perPhase = clamp(merged.timeouts.perPhase, merged.timeouts.perAgent, CEILINGS.totalSeconds);
   merged.timeouts.total = clamp(merged.timeouts.total, merged.timeouts.perPhase, CEILINGS.totalSeconds);

@@ -25,6 +25,7 @@ const FAIL = (error) =>
  *     tool: (payload: any) => Promise<any>,
  *     checkpoint: (payload: any) => Promise<any>,
  *     compact?: (payload: {value: any, opts: object}) => Promise<any>,
+ *     replan?: (payload: {prompt: string, opts: object}) => Promise<any>,
  *     log?: (payload: {message: string, level: string}) => void,
  *     phase?: (payload: {name: string, meta: object}) => void,
  *     budget?: () => any,
@@ -118,6 +119,13 @@ export async function createSandbox(options) {
   // Compaction bridge; defaults to identity so sandboxes built without it (and
   // older compiled scripts that never call compact()) behave exactly as before.
   installAsync('__host_compact', bridges.compact ?? ((payload) => Promise.resolve(payload?.value ?? null)));
+  // Replan bridge; unlike compact's identity default this REJECTS loudly — a
+  // script that replans on an old composition root must fail clearly, never
+  // silently skip the replanned work.
+  installAsync(
+    '__host_replan',
+    bridges.replan ?? (() => Promise.reject(new Error('replan is not available in this engine — update odw-daemon')))
+  );
   installSync('__host_log', (p) => {
     bridges.log?.(p);
     return null;

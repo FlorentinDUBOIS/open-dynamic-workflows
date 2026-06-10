@@ -60,7 +60,22 @@ export function createEmbeddedOrchestrator(options = {}) {
     logger,
   });
 
-  const runtime = createRuntime({ store, queue, config, events, logger });
+  /** Planning (run() AND the runtime's replan() bridge): heuristic createPlan
+   *  WITHOUT llmDecompose — embedded has no planning model, so heuristic
+   *  decomposition is the documented degradation. */
+  const planner = (prompt, plannerOptions = {}) =>
+    createPlan(prompt, {
+      ...plannerOptions,
+      strategy: mergeStrategy({
+        budget: { model },
+        concurrency: { max: maxConcurrency, default: maxConcurrency },
+        safety: config.safety,
+        git: config.git,
+        ...(plannerOptions.strategy ?? {}),
+      }),
+    });
+
+  const runtime = createRuntime({ store, queue, config, events, logger, planner });
 
   /**
    * Plan (if given a prompt) and execute to completion, returning the result.
@@ -69,15 +84,7 @@ export function createEmbeddedOrchestrator(options = {}) {
    */
   async function run(promptOrPlan, runOptions = {}) {
     const plan = typeof promptOrPlan === 'string'
-      ? await createPlan(promptOrPlan, {
-          strategy: mergeStrategy({
-            budget: { model },
-            concurrency: { max: maxConcurrency, default: maxConcurrency },
-            safety: config.safety,
-            git: config.git,
-            ...(runOptions.strategy ?? {}),
-          }),
-        })
+      ? await planner(promptOrPlan, { strategy: runOptions.strategy })
       : promptOrPlan;
 
     const workflowId = await runtime.execWorkflow(plan, runOptions.strategy, {

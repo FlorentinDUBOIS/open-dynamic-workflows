@@ -51,6 +51,7 @@
  * @property {{maxAttempts: number, backoff: "exponential"|"linear", retryableErrors: string[]}} retry
  * @property {{maxTokens: number, maxCostUSD: number, alertAtPercent: number, model: string}} budget
  * @property {{perAgent: number, perPhase: number, total: number}} timeouts
+ * @property {{maxReplans: number, maxDepth: number}} replan
  * @property {{requireApprovalFor: ToolName[], autoApproveReadOnly: boolean, dryRun: boolean}} safety
  * @property {{createBranch: boolean, branchPrefix: string, commitCheckpoints: boolean}} git
  */

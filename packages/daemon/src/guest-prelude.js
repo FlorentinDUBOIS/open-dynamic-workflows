@@ -11,8 +11,15 @@
  * bridge refuses to run it). mode 'test-gated' = adversarial quorum + a
  * mandatory testCommand.
  *
+ * replan() is MID-EXECUTION REPLANNING: when the running plan no longer fits
+ * reality, the script asks the host planner for a new sub-plan, which executes
+ * host-side in a fresh sandbox sharing this workflow's bridges, budget, and
+ * bounds (strategy.replan.maxReplans/maxDepth). Resume-deterministic: the
+ * planned sub-script is checkpointed, so a resumed run replays it verbatim.
+ *
  * Host bridge contract:
- *   async:  __host_agent(json), __host_tool(json), __host_checkpoint(json)
+ *   async:  __host_agent(json), __host_tool(json), __host_checkpoint(json),
+ *           __host_replan(json)
  *           → promise of '{"ok":true,"value":...}' | '{"ok":false,"error":"..."}'
  *   sync:   __host_budget(), __host_args(), __host_log(json), __host_phase(json)
  *           → same envelope, immediately
@@ -246,6 +253,18 @@ function log(message, level) {
 
 function checkpoint(data) {
   return __callAsync(__host_checkpoint, data === undefined ? null : data);
+}
+
+// replan(prompt, opts): ask the host planner for a new sub-plan and run it
+// inside this workflow. opts: {reason?: string, strategy?: object (sub-plan
+// strategy overrides, e.g. {budget:{maxTokens}}), args?: object}. Returns the
+// sub-script's return value. Bounds, caching, and resume determinism are
+// enforced host-side (strategy.replan.maxReplans/maxDepth + checkpoint replay).
+function replan(prompt, opts) {
+  if (typeof prompt !== "string" || !prompt) {
+    throw new Error("replan(prompt, opts) requires a non-empty prompt string");
+  }
+  return __callAsync(__host_replan, { prompt: String(prompt), opts: opts || {} });
 }
 
 function budget() {

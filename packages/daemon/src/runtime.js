@@ -14,10 +14,11 @@ import { createBudget } from './budget.js';
 import { createToolExecutor, TOOL_MANIFEST } from './tools.js';
 
 /**
- * @param {{store: object, queue: object, config: object, events: {emit: Function}, logger: object}} deps
+ * @param {{store: object, queue: object, config: object, events: {emit: Function}, logger: object,
+ *          planner?: (prompt: string, options?: object) => Promise<object>}} deps
  */
 export function createRuntime(deps) {
-  const { store, queue, config, events, logger } = deps;
+  const { store, queue, config, events, logger, planner } = deps;
 
   /** in-memory state per active workflow */
   const active = new Map();
@@ -83,6 +84,7 @@ export function createRuntime(deps) {
       abort,
       paused: false,
       currentPhase: 'init',
+      replanCount: 0,
       done: null,
     };
     active.set(workflowId, state);
@@ -278,6 +280,78 @@ export function createRuntime(deps) {
       args: () => options.args ?? {},
     };
 
+    // Mid-execution replanning: the script asks the planner for a new sub-plan
+    // and runs it in a FRESH sandbox that reuses THE SAME bridges (agent node
+    // identity stays workflow-scoped, so resumed replans cache-hit; budget,
+    // abort, and pause apply automatically). Bounds come from the ROOT run's
+    // strategy.replan — a sub-plan cannot raise its own limits. The planned
+    // sub-script is persisted under a deterministic checkpoint key so a resumed
+    // workflow replays the SAME sub-script instead of replanning differently.
+    const replanBridge = (depth) => async ({ prompt, opts = {} }) => {
+      if (state.paused) throw Object.assign(new Error('workflow paused'), { code: 'paused' });
+      if (abort.signal.aborted) throw Object.assign(new Error('workflow stopped'), { code: 'aborted' });
+      if (!planner) throw new Error('replan is not configured in this engine');
+      const limits = strategy.replan ?? { maxReplans: 2, maxDepth: 1 };
+      if (depth + 1 > limits.maxDepth) {
+        throw new Error(`replan: exceeded maxDepth (${limits.maxDepth}) — nested replans are bounded`);
+      }
+      const count = ++state.replanCount;
+      if (count > limits.maxReplans) {
+        throw new Error(`replan: exceeded maxReplans (${limits.maxReplans}) for this workflow`);
+      }
+
+      const subStrategy = mergeStrategy(deepMerge(strategy, opts.strategy ?? {}));
+
+      // Resume determinism: planning is non-deterministic, so look up a
+      // persisted sub-script for this exact call site before planning anew.
+      const key = sha1(`${workflowId}|replan|${depth}|${count}|${prompt}`);
+      let script = null;
+      let topology;
+      const persisted = store.checkpointByKey?.(workflowId, key);
+      if (persisted) {
+        try {
+          const data = JSON.parse(persisted.state_data);
+          script = data?.script ?? null;
+          topology = data?.topology;
+        } catch {
+          /* unparseable row → plan fresh */
+        }
+      }
+      const cached = Boolean(script);
+      if (!script) {
+        const subPlan = await planner(prompt, { strategy: subStrategy });
+        script = subPlan?.script;
+        topology = subPlan?.topology;
+        if (!script) throw new Error('replan: planner returned no script');
+        store.insertCheckpoint({
+          checkpoint_id: `cp_${randomUUID().slice(0, 12)}`,
+          workflow_id: workflowId,
+          phase_name: state.currentPhase,
+          checkpoint_key: key,
+          state_data: JSON.stringify({ script, reason: opts.reason, topology }),
+          agent_results: null,
+        });
+      }
+      emit(workflowId, 'replan', { reason: opts.reason, depth, count, cached, topology });
+
+      let subSandbox;
+      try {
+        subSandbox = await createSandbox({
+          // Same bridges EXCEPT replan (depth-incremented so nesting is bounded)
+          // and args (the sub-script gets opts.args when provided).
+          hostBridges: { ...hostBridges, replan: replanBridge(depth + 1), args: () => opts.args ?? options.args ?? {} },
+          strategy: subStrategy,
+          totalTimeoutMs: subStrategy.timeouts.total * 1000,
+        });
+        return await subSandbox.runScript(script);
+      } finally {
+        // Each sub-sandbox is its own QuickJS WASM runtime (256MB limit) —
+        // leaks accumulate in a long-lived daemon, so dispose deterministically.
+        subSandbox?.dispose();
+      }
+    };
+    hostBridges.replan = replanBridge(0);
+
     state.done = (async () => {
       let sandbox;
       try {
@@ -397,6 +471,17 @@ export function createRuntime(deps) {
 
 function sha1(text) {
   return createHash('sha1').update(text).digest('hex');
+}
+
+/** Deep-merge plain-object overrides over a base (arrays replace wholesale). */
+function deepMerge(base, overrides) {
+  const out = { ...base };
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    out[key] = value && typeof value === 'object' && !Array.isArray(value) && typeof base?.[key] === 'object' && !Array.isArray(base[key])
+      ? deepMerge(base[key], value)
+      : value;
+  }
+  return out;
 }
 
 function costOf(_budget, model, result) {

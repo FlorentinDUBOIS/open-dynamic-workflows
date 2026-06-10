@@ -69,10 +69,8 @@ export async function startDaemon(options = {}) {
     logger,
   });
 
-  const runtime = createRuntime({ store, queue, config, events, logger });
-  const resumability = createResumability({ store, runtime, logger });
-
-  /** Planning: LLM decomposition via the configured planning model when reachable; heuristic otherwise. */
+  /** Planning: LLM decomposition via the configured planning model when reachable; heuristic otherwise.
+   *  ONE definition shared by the HTTP /workflows/plan endpoint AND the runtime's replan() bridge. */
   const planner = (prompt, plannerOptions = {}) =>
     createPlan(prompt, {
       ...plannerOptions,
@@ -95,6 +93,9 @@ export async function startDaemon(options = {}) {
       },
       llmDecompose: plannerOptions.useLlmPlanner ? llmDecompose(config, queue) : undefined,
     });
+
+  const runtime = createRuntime({ store, queue, config, events, logger, planner });
+  const resumability = createResumability({ store, runtime, logger });
 
   /** Preflight: can we actually reach the configured default model? */
   const checkModel = () => {
