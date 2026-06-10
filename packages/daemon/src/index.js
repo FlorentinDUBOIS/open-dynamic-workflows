@@ -4,6 +4,8 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { createPlan } from 'odw-core';
 import { loadConfig, ensureHome } from './config.js';
 import { createLogger } from './logger.js';
@@ -24,6 +26,35 @@ export async function startDaemon(options = {}) {
   const logger = createLogger({ level: config.daemon.logLevel, stream: options.logStream });
   const events = new EventEmitter();
   events.setMaxListeners(100);
+
+  // ── auth: resolve the daemon token (env → file → generate) ─────────────────
+  const host = options.host ?? '127.0.0.1';
+  let authMode = config.auth?.mode ?? 'token';
+  if (authMode === 'none' && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
+    // The docker path binds 0.0.0.0 — never let that combination run tokenless.
+    logger.warn(`auth.mode "none" is only safe on loopback; forcing token auth on ${host}`);
+    authMode = 'token';
+  }
+  let token = process.env.ODW_DAEMON_TOKEN || null;
+  if (!token && existsSync(paths.tokenPath)) {
+    try {
+      // BOM-strip + trim: same precedent as config.json parsing above.
+      const raw = readFileSync(paths.tokenPath, 'utf8');
+      token = (raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).trim() || null;
+    } catch {
+      token = null; // unreadable file = no token; we regenerate below
+    }
+    // writeFileSync's mode only applies at creation — tighten a pre-existing
+    // file here. win32: NTFS ignores POSIX modes and %USERPROFILE% ACLs are
+    // already user-private, so skip chmod there.
+    if (token && process.platform !== 'win32') {
+      try { chmodSync(paths.tokenPath, 0o600); } catch { /* best-effort */ }
+    }
+  }
+  if (!token) {
+    token = randomBytes(32).toString('hex');
+    writeFileSync(paths.tokenPath, token, { encoding: 'utf8', mode: 0o600 });
+  }
 
   const db = openDatabase(options.dbPath ?? paths.dbPath);
   const store = createStore(db);
@@ -76,10 +107,10 @@ export async function startDaemon(options = {}) {
     }
   };
 
-  const api = createServer({ runtime, store, config, logger, planner, events, checkModel });
-  const server = await api.listen(options.port ?? config.daemon.port, options.host ?? '127.0.0.1');
+  const api = createServer({ runtime, store, config, logger, planner, events, checkModel, auth: { mode: authMode, token } });
+  const server = await api.listen(options.port ?? config.daemon.port, host);
   const { port } = server.address();
-  logger.info(`daemon listening on ${options.host ?? '127.0.0.1'}:${port}`);
+  logger.info(`daemon listening on ${host}:${port}`);
 
   return {
     server: api,

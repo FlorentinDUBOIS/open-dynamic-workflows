@@ -36,7 +36,22 @@
       { "command": "odw.resumeWorkflow", "title": "ODW: Resume Workflow" },
       { "command": "odw.stopWorkflow", "title": "ODW: Stop Workflow" },
       { "command": "odw.installDaemon", "title": "ODW: Install Local Daemon" }
-    ]
+    ],
+    "configuration": {
+      "title": "Open Dynamic Workflows",
+      "properties": {
+        "odw.daemonPort": {
+          "type": ["number", "null"],
+          "default": null,
+          "description": "Port of the local odw daemon HTTP API. Leave unset to use ODW_DAEMON_PORT or the default 7345."
+        },
+        "odw.daemonToken": {
+          "type": "string",
+          "default": "",
+          "description": "Bearer token for the local odw daemon. Leave empty to use ODW_DAEMON_TOKEN or ~/.odw/daemon.token."
+        }
+      }
+    }
   },
   "scripts": {
     "test": "node --test test/"

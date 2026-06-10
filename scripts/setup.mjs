@@ -5,15 +5,24 @@
  * Cross-platform (no shell-specific syntax). Run: npm run setup
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const home = process.env.ODW_HOME || join(homedir(), '.odw');
 const configPath = join(home, 'config.json');
+const tokenPath = join(home, 'daemon.token');
+
+// chmod 0600 on POSIX; win32 skips it (NTFS ignores POSIX modes and
+// %USERPROFILE% ACLs are already user-private).
+const tighten = (path) => {
+  if (process.platform === 'win32') return;
+  try { chmodSync(path, 0o600); } catch { /* best-effort */ }
+};
 
 const ind = (s) => `\x1b[38;5;105m${s}\x1b[0m`;
 const ok = (s) => `\x1b[32m${s}\x1b[0m`;
@@ -23,6 +32,7 @@ console.log(ind('open dynamic workflows · setup'));
 if (!existsSync(home)) mkdirSync(home, { recursive: true });
 
 if (existsSync(configPath)) {
+  tighten(configPath); // apiKeys live in this file — keep it user-only
   console.log(`  ${ok('✓')} config already present at ${configPath}`);
 } else {
   const starter = {
@@ -32,9 +42,19 @@ if (existsSync(configPath)) {
     budget: { defaultMaxTokens: 1000000, defaultMaxCostUSD: 50, alertAtPercent: 80 },
   };
   // Written WITHOUT a BOM so every JSON parser (including Node's) accepts it.
-  writeFileSync(configPath, JSON.stringify(starter, null, 2), { encoding: 'utf8' });
+  writeFileSync(configPath, JSON.stringify(starter, null, 2), { encoding: 'utf8', mode: 0o600 });
+  tighten(configPath);
   console.log(`  ${ok('✓')} wrote starter config ${configPath}`);
   console.log('    → add an API key under "apiKeys", or set models.default to "ollama:<model>" for $0 local runs');
+}
+
+if (existsSync(tokenPath)) {
+  tighten(tokenPath);
+  console.log(`  ${ok('✓')} daemon token already present at ${tokenPath}`);
+} else {
+  writeFileSync(tokenPath, randomBytes(32).toString('hex'), { encoding: 'utf8', mode: 0o600 });
+  tighten(tokenPath);
+  console.log(`  ${ok('✓')} generated daemon auth token ${tokenPath}`);
 }
 
 try {

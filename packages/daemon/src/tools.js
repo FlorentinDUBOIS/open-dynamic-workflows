@@ -9,10 +9,123 @@
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, realpathSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { lookup as dnsLookup } from 'node:dns/promises';
 import { join, resolve, relative, dirname, sep } from 'node:path';
 
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_RESULTS = 500;
+const MAX_REDIRECTS = 5;
+const MAX_GLOB_LENGTH = 500;
+const MAX_GLOB_WILDCARDS = 16;
+
+// ── SSRF guard ────────────────────────────────────────────────────────────────
+
+/** @returns {boolean} true when the dotted-quad v4 address is private/internal */
+function blockedV4(addr) {
+  const octets = addr.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((o) => !Number.isInteger(o) || o < 0 || o > 255)) return false;
+  const [a, b] = octets;
+  return (
+    a === 0 ||                          // 0.0.0.0/8 "this network"
+    a === 10 ||                         // 10/8 private
+    a === 127 ||                        // 127/8 loopback
+    (a === 169 && b === 254) ||         // 169.254/16 link-local (cloud metadata)
+    (a === 172 && b >= 16 && b <= 31) ||// 172.16/12 private
+    (a === 192 && b === 168) ||         // 192.168/16 private
+    (a === 100 && b >= 64 && b <= 127) ||// 100.64/10 CGNAT
+    (a === 198 && (b === 18 || b === 19)) // 198.18/15 benchmarking
+  );
+}
+
+/** @returns {boolean} true when the v6 address is private/internal */
+function blockedV6(addr) {
+  const a = addr.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]; // strip brackets + zone id
+  if (a === '::' || a === '::1') return true;
+  // IPv4-mapped: re-check the embedded v4 (dotted form from dns, hex form from the URL parser)
+  const dotted = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) return blockedV4(dotted[1]);
+  const hex = a.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hex) {
+    const hi = parseInt(hex[1], 16);
+    const lo = parseInt(hex[2], 16);
+    return blockedV4(`${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`);
+  }
+  const first = parseInt(a.split(':')[0] || '0', 16);
+  if ((first & 0xfe00) === 0xfc00) return true; // fc00::/7 unique-local
+  if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
+  return false;
+}
+
+/** @returns {boolean} true for hostnames that must never be fetched */
+function blockedHostname(host) {
+  const h = host.toLowerCase().replace(/\.$/, ''); // tolerate trailing-dot FQDNs
+  return (
+    h === 'localhost' || h.endsWith('.localhost') ||
+    h === 'metadata.google.internal' || h === 'metadata.goog' ||
+    h === 'kubernetes.default.svc' || h.endsWith('.svc.cluster.local')
+  );
+}
+
+/**
+ * Assert a URL is a public http(s) target: scheme-checked, blocked-host-checked,
+ * and (for non-IP hostnames) every DNS-resolved address checked against private
+ * ranges. TOCTOU DNS-rebinding between this check and the actual fetch is
+ * accepted residual risk at this layer.
+ * @param {string} url
+ * @param {{allowPrivateNetwork?: boolean, lookup?: typeof dnsLookup}} [options]
+ * @returns {Promise<URL>}
+ */
+export async function assertPublicHttpUrl(url, { allowPrivateNetwork, lookup } = {}) {
+  let u;
+  try {
+    u = new URL(String(url));
+  } catch {
+    throw new Error(`web_fetch: invalid url: ${url}`);
+  }
+  if (!/^https?:$/.test(u.protocol)) throw new Error('web_fetch: url must be http(s)');
+  if (allowPrivateNetwork === true) return u; // explicit opt-out (localhost docs servers)
+  const host = u.hostname.replace(/^\[|\]$/g, ''); // URL wraps v6 literals in []
+  if (blockedHostname(host)) throw new Error(`web_fetch: blocked host: ${host}`);
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) {
+    // The WHATWG URL parser canonicalizes octal/hex/integer v4 forms to dotted-quad.
+    if (blockedV4(host)) throw new Error(`web_fetch: blocked private/internal address: ${host}`);
+    return u;
+  }
+  if (host.includes(':')) {
+    if (blockedV6(host)) throw new Error(`web_fetch: blocked private/internal address: ${host}`);
+    return u;
+  }
+  let addresses;
+  try {
+    addresses = await (lookup ?? dnsLookup)(host, { all: true });
+  } catch {
+    throw new Error(`web_fetch: cannot resolve host: ${host}`);
+  }
+  if (!addresses?.length) throw new Error(`web_fetch: cannot resolve host: ${host}`);
+  for (const { address } of addresses) {
+    if (address.includes(':') ? blockedV6(address) : blockedV4(address)) {
+      throw new Error(`web_fetch: host ${host} resolves to a private/internal address (${address})`);
+    }
+  }
+  return u;
+}
+
+/**
+ * Reject pathological glob patterns BEFORE they compile into a RegExp.
+ * @param {string} pattern
+ * @returns {string} the validated pattern
+ */
+export function validateGlob(pattern) {
+  const p = String(pattern ?? '');
+  if (p.length > MAX_GLOB_LENGTH) {
+    throw new Error(`glob pattern too long: ${p.length} chars (max ${MAX_GLOB_LENGTH})`);
+  }
+  const wildcards = (p.match(/[*?]/g) ?? []).length;
+  if (wildcards > MAX_GLOB_WILDCARDS) {
+    throw new Error(`glob pattern too complex: ${wildcards} wildcards (max ${MAX_GLOB_WILDCARDS})`);
+  }
+  return p;
+}
 
 /**
  * @param {{cwd: string, safety: {requireApprovalFor: string[], autoApproveReadOnly: boolean,
@@ -76,8 +189,21 @@ export function createToolExecutor(options) {
     web_fetch: async (url) => {
       const u = String(url);
       if (!/^https?:\/\//i.test(u)) throw new Error('web_fetch: url must be http(s)');
-      const res = await fetch(u, { headers: { 'user-agent': 'odw-research/1.0' }, signal: AbortSignal.timeout(20000) });
-      if (!res.ok) throw new Error(`web_fetch ${res.status} for ${u}`);
+      const allowPrivateNetwork = safety.web?.allowPrivateNetwork === true;
+      // Manual redirects: every hop's absolute Location goes back through the
+      // SSRF guard (redirect:'follow' would skip the re-check on Location).
+      let current = u;
+      let res;
+      for (let hop = 0; ; hop++) {
+        await assertPublicHttpUrl(current, { allowPrivateNetwork });
+        res = await fetch(current, { headers: { 'user-agent': 'odw-research/1.0' }, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+        if (res.status < 300 || res.status >= 400) break;
+        const location = res.headers.get('location');
+        if (!location) break;
+        if (hop >= MAX_REDIRECTS) throw new Error(`web_fetch: too many redirects (>${MAX_REDIRECTS}) for ${u}`);
+        current = new URL(location, current).href; // resolve relative Locations
+      }
+      if (!res.ok) throw new Error(`web_fetch ${res.status} for ${current}`);
       const html = await res.text();
       // strip scripts/styles/tags → readable text
       const text = html
@@ -194,7 +320,7 @@ export function createToolExecutor(options) {
 
 /** Minimal glob: supports **, *, ? and {a,b} alternation. Skips node_modules/.git. */
 export function globWalk(root, pattern) {
-  const re = globToRegExp(pattern);
+  const re = globToRegExp(validateGlob(pattern));
   const out = [];
   const walk = (dir) => {
     let entries;

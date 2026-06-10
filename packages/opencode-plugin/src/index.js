@@ -61,15 +61,42 @@ export function detectTrigger(prompt) {
 
 // ── daemon client ────────────────────────────────────────────────────────────
 
+const AUTH_GUIDANCE = 'odw daemon requires an auth token (copy ~/.odw/daemon.token or set ODW_DAEMON_TOKEN)';
+
+// Bearer token for the daemon: env wins over ~/.odw/daemon.token. Resolved
+// lazily per request — the daemon (and its token file) may appear after the
+// plugin loads. Absent/unreadable file means "no token".
+export function resolveDaemonToken() {
+  if (process.env.ODW_DAEMON_TOKEN) return process.env.ODW_DAEMON_TOKEN;
+  try {
+    const raw = readFileSync(join(process.env.ODW_HOME ?? join(homedir(), '.odw'), 'daemon.token'), 'utf8');
+    // Strip a UTF-8 BOM if present — editors and PowerShell on Windows often write one.
+    return (raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function createDaemonClient(port) {
   const base = `http://127.0.0.1:${port}`;
   const request = async (method, path, body) => {
+    // Headers are built unconditionally so GETs carry the token too.
+    const headers = body ? { 'content-type': 'application/json' } : {};
+    const token = resolveDaemonToken();
+    if (token) headers.authorization = `Bearer ${token}`;
     const res = await fetch(base + path, {
       method,
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers,
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(method === 'GET' ? 5000 : 30000),
     });
+    if (res.status === 401) {
+      // 401 means the daemon IS running but the token is missing/wrong — never
+      // report it as "daemon offline".
+      const error = new Error(AUTH_GUIDANCE);
+      error.unauthorized = true;
+      throw error;
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       throw new Error(`daemon ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`);
@@ -81,7 +108,10 @@ export function createDaemonClient(port) {
     health: async () => {
       try {
         return await request('GET', '/health');
-      } catch {
+      } catch (error) {
+        // Rethrow 401 so callers surface auth guidance instead of "offline";
+        // anything else (refused, timeout) really is an offline daemon.
+        if (error.unauthorized) throw error;
         return null;
       }
     },
@@ -209,9 +239,9 @@ async function runEmbedded(client, effective, directory) {
   }
 }
 
-function fallbackDirective(cleanPrompt, mode) {
+function fallbackDirective(cleanPrompt, mode, reason = 'daemon OFFLINE') {
   return [
-    `[open-dynamic-workflows · ${mode} trigger · daemon OFFLINE — native fallback]`,
+    `[open-dynamic-workflows · ${mode} trigger · ${reason} — native fallback]`,
     `Orchestrate this yourself using opencode's native task/subagent capability (platform-limited concurrency):`,
     `1. PLAN FIRST: decompose into a task graph (discovery → fan-out work → adversarial verification → synthesis). State the plan before acting.`,
     `2. Fan out independent items to parallel subagents with hyper-scoped instructions and structured JSON outputs.`,
@@ -227,6 +257,27 @@ function fallbackDirective(cleanPrompt, mode) {
 export const OdwPlugin = async ({ directory, client }) => {
   const port = resolveDaemonPort();
   const daemon = createDaemonClient(port);
+
+  // Tool preflight: null when healthy, otherwise the message to return — the
+  // offline hint, or the auth guidance on 401 (never "offline" for a 401).
+  const daemonGate = async () => {
+    try {
+      return (await daemon.health()) ? null : `daemon offline — start it with: ${INSTALL_HINT}`;
+    } catch (error) {
+      return error.message;
+    }
+  };
+
+  // GET /health is auth-exempt, so a token-locked daemon can pass the preflight
+  // and then 401 the real call — return the guidance instead of throwing.
+  const guarded = (execute) => async (args, context) => {
+    try {
+      return await execute(args, context);
+    } catch (error) {
+      if (error.unauthorized) return error.message;
+      throw error;
+    }
+  };
 
   return {
     'chat.message': async (input, output) => {
@@ -275,7 +326,15 @@ export const OdwPlugin = async ({ directory, client }) => {
       }
 
       // SECONDARY path — the local daemon (its own configured key, full power).
-      const health = await daemon.health();
+      let health;
+      try {
+        health = await daemon.health();
+      } catch (error) {
+        // 401: daemon RUNNING but the token is missing/wrong — surface the
+        // auth guidance, never an offline hint.
+        textPart.text = fallbackDirective(effective.cleanPrompt, effective.mode, `daemon UNAUTHORIZED: ${error.message}`);
+        return;
+      }
       if (!health) {
         textPart.text = fallbackDirective(effective.cleanPrompt, effective.mode);
         return;
@@ -293,10 +352,12 @@ export const OdwPlugin = async ({ directory, client }) => {
           `Original request (handled by the workflow — do NOT redo it yourself): ${effective.cleanPrompt}`,
         ].join('\n');
       } catch (error) {
-        textPart.text = [
-          `[open-dynamic-workflows · daemon error: ${String(error.message).slice(0, 200)}]`,
-          fallbackDirective(effective.cleanPrompt, effective.mode),
-        ].join('\n');
+        textPart.text = error.unauthorized
+          ? fallbackDirective(effective.cleanPrompt, effective.mode, `daemon UNAUTHORIZED: ${error.message}`)
+          : [
+              `[open-dynamic-workflows · daemon error: ${String(error.message).slice(0, 200)}]`,
+              fallbackDirective(effective.cleanPrompt, effective.mode),
+            ].join('\n');
       }
     },
 
@@ -305,33 +366,36 @@ export const OdwPlugin = async ({ directory, client }) => {
         description:
           'Plan a dynamic multi-agent workflow without executing it. Returns the task graph, topology, roles, cost/time estimate and the generated orchestration script.',
         args: { prompt: tool.schema.string().describe('what the workflow should accomplish') },
-        async execute({ prompt }) {
-          if (!(await daemon.health())) return `daemon offline — start it with: ${INSTALL_HINT}`;
+        execute: guarded(async ({ prompt }) => {
+          const gate = await daemonGate();
+          if (gate) return gate;
           const { plan } = await daemon.plan(prompt);
           return JSON.stringify(
             { planId: plan.planId, topology: plan.topology, estimate: plan.estimate, taskGraph: plan.taskGraph, script: plan.script },
             null,
             2
           ).slice(0, 24000);
-        },
+        }),
       }),
 
       odw_run: tool({
         description: 'Plan AND execute a dynamic multi-agent workflow via the local odw daemon. Returns the workflow id immediately.',
         args: { prompt: tool.schema.string().describe('what the workflow should accomplish') },
-        async execute({ prompt }, context) {
-          if (!(await daemon.health())) return `daemon offline — start it with: ${INSTALL_HINT}`;
+        execute: guarded(async ({ prompt }, context) => {
+          const gate = await daemonGate();
+          if (gate) return gate;
           const { plan } = await daemon.plan(prompt);
           const { workflowId } = await daemon.exec(plan, context.directory);
           return `workflow ${workflowId} started — ${planSummary(plan)}. Check with odw_status.`;
-        },
+        }),
       }),
 
       odw_status: tool({
         description: 'Status of one odw workflow: phase, agents completed/failed, cost, result when finished.',
         args: { workflowId: tool.schema.string().describe('the wf_... id') },
-        async execute({ workflowId }) {
-          if (!(await daemon.health())) return `daemon offline — start it with: ${INSTALL_HINT}`;
+        execute: guarded(async ({ workflowId }) => {
+          const gate = await daemonGate();
+          if (gate) return gate;
           const record = await daemon.get(workflowId);
           return JSON.stringify(
             {
@@ -344,20 +408,21 @@ export const OdwPlugin = async ({ directory, client }) => {
             null,
             2
           );
-        },
+        }),
       }),
 
       odw_workflows: tool({
         description: 'List all workflows known to the local odw daemon with their statuses.',
         args: {},
-        async execute() {
-          if (!(await daemon.health())) return `daemon offline — start it with: ${INSTALL_HINT}`;
+        execute: guarded(async () => {
+          const gate = await daemonGate();
+          if (gate) return gate;
           const { workflows } = await daemon.list();
           if (!workflows.length) return 'no workflows yet';
           return workflows
             .map((w) => `${w.workflow_id}  ${w.status.padEnd(10)} agents ${w.completed_agents}/${w.total_agents}  $${w.cost_usd?.toFixed?.(4) ?? w.cost_usd}  ${String(w.root_prompt).slice(0, 60)}`)
             .join('\n');
-        },
+        }),
       }),
 
       odw_ultracode: tool({

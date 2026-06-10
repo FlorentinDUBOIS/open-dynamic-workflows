@@ -31,6 +31,14 @@ test('canonical skill folder exists with frontmatter and daemon steps', () => {
   assert.ok(existsSync(join(root, 'AGENTS.md')));
 });
 
+test('daemon-bridge.js stays byte-identical to the openclaw skill copy', () => {
+  // The two bridges are deliberate duplicates (zero-dependency skill packaging;
+  // CONTRIBUTING.md forbids adapters importing the daemon) — edits must land in both.
+  const here = readFileSync(join(root, 'scripts', 'daemon-bridge.js'));
+  const there = readFileSync(join(root, '..', 'openclaw-adapter', 'skills', 'open-dynamic-workflows', 'scripts', 'daemon-bridge.js'));
+  assert.ok(here.equals(there), 'bridges drifted — apply identical edits to both copies');
+});
+
 test('daemon-bridge --check exits 1 with a helpful message when daemon is down', () => {
   try {
     execFileSync(process.execPath, [join(root, 'scripts', 'daemon-bridge.js'), '--check'], {
