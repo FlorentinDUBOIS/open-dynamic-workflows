@@ -12,6 +12,44 @@ const NO_TEMPERATURE = /^claude-opus-4-(7|8)/;
 export function createAnthropicProvider({ apiKey, baseURL = 'https://api.anthropic.com', fetchImpl = fetch }) {
   if (!apiKey) throw new Error('anthropic provider requires an API key (config.apiKeys.anthropic or ANTHROPIC_API_KEY)');
 
+  // Shared request plumbing for call() and callWithTools().
+  const baseBody = (job) => {
+    const body = { model: job.model, max_tokens: job.maxTokens ?? 4096 };
+    if (job.systemPrompt) body.system = job.systemPrompt;
+    if (job.temperature !== undefined && !NO_TEMPERATURE.test(job.model)) {
+      body.temperature = job.temperature;
+    }
+    return body;
+  };
+
+  const post = async (body, opts) => {
+    const res = await fetchImpl(`${baseURL}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    });
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw httpError('anthropic', res.status, errorBody);
+    }
+    return res.json();
+  };
+
+  const usageOf = (data) => ({
+    tokensInput: data.usage?.input_tokens ?? 0,
+    tokensOutput: data.usage?.output_tokens ?? 0,
+  });
+
+  const textOf = (data) => (data.content ?? [])
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text)
+    .join('');
+
   return {
     name: 'anthropic',
     /**
@@ -20,48 +58,72 @@ export function createAnthropicProvider({ apiKey, baseURL = 'https://api.anthrop
      * @param {{signal?: AbortSignal}} [opts]
      */
     async call(job, opts = {}) {
-      const body = {
-        model: job.model,
-        max_tokens: job.maxTokens ?? 4096,
-        messages: [{ role: 'user', content: job.prompt }],
-      };
-      if (job.systemPrompt) body.system = job.systemPrompt;
-      if (job.temperature !== undefined && !NO_TEMPERATURE.test(job.model)) {
-        body.temperature = job.temperature;
-      }
+      const body = { ...baseBody(job), messages: [{ role: 'user', content: job.prompt }] };
       if (job.schema) {
         body.output_config = { format: { type: 'json_schema', schema: job.schema } };
       }
+      const data = await post(body, opts);
+      return { text: textOf(data), ...usageOf(data), raw: data };
+    },
 
-      const res = await fetchImpl(`${baseURL}/v1/messages`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify(body),
-        signal: opts.signal,
-      });
-
-      if (!res.ok) {
-        const errorBody = await res.text().catch(() => '');
-        throw httpError('anthropic', res.status, errorBody);
+    /**
+     * Tool-loop variant: neutral transcript in, {text, toolCalls?} out.
+     * NEVER sends output_config — the API rejects forced format + tools, and
+     * the queue enforces schemas on the final turn via prompt + extractJson.
+     * @param {{model: string, systemPrompt?: string, messages: object[],
+     *          tools?: Array<{name: string, description: string, inputSchema: object}>,
+     *          maxTokens?: number, temperature?: number, schema?: object}} job
+     * @param {{signal?: AbortSignal}} [opts]
+     */
+    async callWithTools(job, opts = {}) {
+      const body = { ...baseBody(job), messages: toAnthropicMessages(job.messages ?? []) };
+      if (job.tools?.length) {
+        body.tools = job.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
       }
-
-      const data = await res.json();
-      const text = (data.content ?? [])
-        .filter((block) => block.type === 'text')
-        .map((block) => block.text)
-        .join('');
+      const data = await post(body, opts);
+      let toolCalls;
+      if (data.stop_reason === 'tool_use') {
+        toolCalls = (data.content ?? [])
+          .filter((block) => block.type === 'tool_use')
+          .map((block) => ({ id: block.id, name: block.name, args: block.input ?? {} }));
+      }
       return {
-        text,
-        tokensInput: data.usage?.input_tokens ?? 0,
-        tokensOutput: data.usage?.output_tokens ?? 0,
+        text: textOf(data),
+        toolCalls: toolCalls?.length ? toolCalls : undefined,
+        ...usageOf(data),
         raw: data,
       };
     },
   };
+}
+
+/** Neutral transcript → Anthropic messages (tool calls/results become content blocks). */
+function toAnthropicMessages(messages) {
+  const out = [];
+  for (const m of messages) {
+    if (m.role === 'assistant') {
+      const content = [];
+      if (m.content) content.push({ type: 'text', text: m.content });
+      for (const call of m.toolCalls ?? []) {
+        content.push({ type: 'tool_use', id: call.id, name: call.name, input: call.args ?? {} });
+      }
+      out.push({ role: 'assistant', content });
+    } else if (m.role === 'tool') {
+      const block = { type: 'tool_result', tool_use_id: m.toolCallId, content: String(m.content ?? '') };
+      if (m.isError) block.is_error = true;
+      // Anthropic requires every tool_result for one assistant turn in a SINGLE
+      // following user message — merge consecutive tool results.
+      const last = out[out.length - 1];
+      if (last?.role === 'user' && Array.isArray(last.content) && last.content[0]?.type === 'tool_result') {
+        last.content.push(block);
+      } else {
+        out.push({ role: 'user', content: [block] });
+      }
+    } else {
+      out.push({ role: 'user', content: m.content });
+    }
+  }
+  return out;
 }
 
 /**

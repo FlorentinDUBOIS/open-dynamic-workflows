@@ -11,7 +11,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mergeStrategy, costFor, compactValue } from 'odw-core';
 import { createSandbox } from './sandbox.js';
 import { createBudget } from './budget.js';
-import { createToolExecutor } from './tools.js';
+import { createToolExecutor, TOOL_MANIFEST } from './tools.js';
 
 /**
  * @param {{store: object, queue: object, config: object, events: {emit: Function}, logger: object}} deps
@@ -129,11 +129,40 @@ export function createRuntime(deps) {
         if (state.paused) throw Object.assign(new Error('workflow paused'), { code: 'paused' });
         if (abort.signal.aborted) throw Object.assign(new Error('workflow stopped'), { code: 'aborted' });
 
-        const model = job.model ?? strategy.budget.model;
-        const phase = state.currentPhase;
-        const nodeId = sha1(`${workflowId}|${phase}|${job.role ?? ''}|${job.prompt}`);
+        // Model tier aliases: 'planning'|'default'|'fallback' resolve to the
+        // configured model ids so scripts stay portable across configs. Applies
+        // to ALL agents (tools or not).
+        let model = job.model ?? strategy.budget.model;
+        if ((model === 'planning' || model === 'default' || model === 'fallback') && config?.models?.[model]) {
+          model = config.models[model];
+        }
 
-        if (cache.has(nodeId)) {
+        // Tool whitelist: only manifest names may activate the model-side loop
+        // (the model never picks tool names — the SCRIPT author does).
+        let tools;
+        if (job.tools !== undefined) {
+          if (!Array.isArray(job.tools) || job.tools.some((t) => typeof t !== 'string')) {
+            throw new Error('agent: tools must be an array of tool-name strings');
+          }
+          const unknown = job.tools.filter((t) => !TOOL_MANIFEST[t]);
+          if (unknown.length) {
+            throw new Error(`agent: unknown tool(s): ${unknown.join(', ')} — valid tools: ${Object.keys(TOOL_MANIFEST).join(', ')}`);
+          }
+          tools = job.tools;
+        }
+        const toolJob = Array.isArray(tools) && tools.length > 0;
+
+        const phase = state.currentPhase;
+        // Tool names are part of node identity — the same prompt with different
+        // tools is a different node.
+        const toolKey = toolJob ? `|tools:${[...tools].sort().join(',')}` : '';
+        const nodeId = sha1(`${workflowId}|${phase}|${job.role ?? ''}|${job.prompt}${toolKey}`);
+
+        // RESUME-CACHE SAFETY: never serve a cached output for a tool-using
+        // agent — a resumed run replaying "I wrote the file" from cache would
+        // silently SKIP the side effects. The node row is still upserted and
+        // completed below for audit/stats.
+        if (!toolJob && cache.has(nodeId)) {
           emit(workflowId, 'agent_cached', { nodeId, phase });
           return cache.get(nodeId);
         }
@@ -163,6 +192,14 @@ export function createRuntime(deps) {
               // this is what makes a per-run `context.enabled:false` (or custom
               // safetyFactor) actually take effect at the call site.
               context: strategy.context,
+              // Tool loop wiring: the per-workflow executor travels on the job
+              // so the daemon-wide queue runs tools rooted at THIS workflow's
+              // cwd under THIS workflow's safety policy.
+              ...(toolJob ? {
+                tools,
+                toolExecutor: (call) => toolExecutor(call),
+                maxToolIterations: job.maxToolIterations,
+              } : {}),
             },
             abort.signal
           );

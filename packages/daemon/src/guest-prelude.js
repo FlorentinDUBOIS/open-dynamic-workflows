@@ -5,6 +5,12 @@
  * VM promises). Higher-order primitives live entirely guest-side, so no
  * closures ever cross the boundary.
  *
+ * verify() is optionally TEST-GATED: a testCommand runs through the run_bash
+ * tool bridge in parallel with the critic fan-out, and the verdict passes only
+ * when the critic quorum passes AND the command exits 0 (fail-closed when the
+ * bridge refuses to run it). mode 'test-gated' = adversarial quorum + a
+ * mandatory testCommand.
+ *
  * Host bridge contract:
  *   async:  __host_agent(json), __host_tool(json), __host_checkpoint(json)
  *           → promise of '{"ok":true,"value":...}' | '{"ok":false,"error":"..."}'
@@ -128,6 +134,11 @@ function summarize(text, opts) {
 function verify(config) {
   if (!config || config.target === undefined) throw new Error("verify({target,...}) requires a target");
   var mode = config.mode || "adversarial";
+  // 'test-gated' aliases adversarial quorum semantics but REQUIRES a test
+  // command — for code, the test suite is the ultimate critic.
+  if (mode === "test-gated" && !config.testCommand) {
+    throw new Error("verify: mode 'test-gated' requires a testCommand");
+  }
   var critics = config.critics || [];
   if (!critics.length) throw new Error("verify: at least one critic is required");
   var threshold = config.consensusThreshold || Math.ceil(critics.length / 2);
@@ -164,21 +175,48 @@ function verify(config) {
       };
     });
 
-    return parallel(calls).then(function (verdicts) {
+    // Test gate: testCommand runs through the run_bash bridge IN PARALLEL with
+    // the critic fan-out (testTimeout is informational only — run_bash enforces
+    // its own 120s cap). A bridge refusal (approval gate, blocked command,
+    // dryRun) fails CLOSED: a gate that cannot run is a failed gate, not a crash.
+    var testRun = null;
+    if (config.testCommand) {
+      testRun = __callAsync(__host_tool, { tool: "run_bash", args: [String(config.testCommand)] }).then(
+        function (r) {
+          r = r || {};
+          var code = typeof r.exitCode === "number" ? r.exitCode : null;
+          return {
+            exitCode: code,
+            output: String(r.stdout === undefined ? "" : r.stdout).slice(0, 4000),
+            error: code === null ? "run_bash returned no exit code" : null
+          };
+        },
+        function (e) {
+          return { exitCode: null, output: "", error: (e && e.message) || String(e) };
+        }
+      );
+    }
+
+    return Promise.all([parallel(calls), testRun]).then(function (settled) {
+      var verdicts = settled[0];
+      var testGate = settled[1];
       var confident = verdicts.filter(function (v) { return (v.confidence || 0) >= minConfidence; });
       var approvals = confident.filter(function (v) { return v.approved; }).length;
       var rejections = confident.filter(function (v) { return !v.approved; }).length;
       // consensus: needs a positive quorum of confident approvals.
-      // adversarial: target survives unless a quorum of confident critics REJECTS it
-      //   (an errored/unconfident critic cannot sink an adversarial pass, but does
-      //    weaken a consensus pass — that asymmetry is the point of the two modes).
-      var passed = mode === "consensus" ? approvals >= threshold : rejections < threshold;
+      // adversarial (and its 'test-gated' alias): target survives unless a quorum
+      //   of confident critics REJECTS it (an errored/unconfident critic cannot
+      //   sink an adversarial pass, but does weaken a consensus pass — that
+      //   asymmetry is the point of the two modes).
+      var quorumPassed = mode === "consensus" ? approvals >= threshold : rejections < threshold;
       var rejectedItems = [];
       confident.forEach(function (v) {
         (v.rejectedItems || []).forEach(function (item) { rejectedItems.push(item); });
       });
-      return {
-        passed: passed,
+      var result = {
+        // test-gated: quorum AND a clean exit 0 — a null exitCode (bridge
+        // refusal) can never pass.
+        passed: testGate ? quorumPassed && testGate.exitCode === 0 : quorumPassed,
         mode: mode,
         approvals: approvals,
         rejections: rejections,
@@ -187,6 +225,13 @@ function verify(config) {
         verdicts: verdicts,
         target: config.target
       };
+      if (testGate) {
+        result.testCommand = config.testCommand;
+        result.testExitCode = testGate.exitCode;
+        result.testOutput = testGate.output;
+        result.testError = testGate.error;
+      }
+      return result;
     });
   });
 }

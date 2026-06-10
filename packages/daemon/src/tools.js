@@ -18,6 +18,110 @@ const MAX_REDIRECTS = 5;
 const MAX_GLOB_LENGTH = 500;
 const MAX_GLOB_WILDCARDS = 16;
 
+// ── tool manifest ─────────────────────────────────────────────────────────────
+
+/**
+ * Model-facing tool contract for agent({tools:[...]}). inputSchema is the JSON
+ * Schema the providers send to the model (named properties); argOrder is the
+ * positional order createToolExecutor expects — the bridge between the model's
+ * named-args calling convention and the executor's positional one. `spread`
+ * marks the single array-valued arg that is spread into positionals (git).
+ */
+export const TOOL_MANIFEST = {
+  glob: {
+    description: 'List files in the workflow root matching a glob pattern (supports **, *, ? and {a,b}).',
+    inputSchema: { type: 'object', properties: { pattern: { type: 'string', description: 'glob pattern, e.g. src/**/*.js' } }, required: ['pattern'] },
+    argOrder: ['pattern'],
+  },
+  read_file: {
+    description: 'Read a UTF-8 text file inside the workflow root and return its contents.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'file path relative to the workflow root' } }, required: ['path'] },
+    argOrder: ['path'],
+  },
+  search: {
+    description: 'Search file contents for a case-insensitive regex; returns {file, line, text} matches.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        pattern: { type: 'string', description: 'regular expression to search for' },
+        glob: { type: 'string', description: 'optional glob limiting which files are searched (default **/*)' },
+      },
+      required: ['pattern'],
+    },
+    argOrder: ['pattern', 'glob'],
+  },
+  write_file: {
+    description: 'Write a UTF-8 text file inside the workflow root, creating parent directories.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'file path relative to the workflow root' },
+        content: { type: 'string', description: 'full file contents to write' },
+      },
+      required: ['path', 'content'],
+    },
+    argOrder: ['path', 'content'],
+  },
+  run_bash: {
+    description: 'Run a shell command in the workflow root (bash on POSIX, PowerShell on Windows); returns {stdout, exitCode}.',
+    inputSchema: { type: 'object', properties: { command: { type: 'string', description: 'the command line to execute' } }, required: ['command'] },
+    argOrder: ['command'],
+  },
+  git: {
+    description: 'Run git in the workflow root with the given argument list, e.g. {"args":["status","--short"]}.',
+    inputSchema: {
+      type: 'object',
+      properties: { args: { type: 'array', items: { type: 'string' }, description: 'git arguments, one array element each' } },
+      required: ['args'],
+    },
+    argOrder: ['args'],
+    spread: true,
+  },
+  web_fetch: {
+    description: 'Fetch a public http(s) URL and return readable page text (SSRF-guarded).',
+    inputSchema: { type: 'object', properties: { url: { type: 'string', description: 'absolute http(s) URL' } }, required: ['url'] },
+    argOrder: ['url'],
+  },
+  web_search: {
+    description: 'Keyless web search; returns up to 8 {title, url} results.',
+    inputSchema: { type: 'object', properties: { query: { type: 'string', description: 'search query' } }, required: ['query'] },
+    argOrder: ['query'],
+  },
+};
+
+/**
+ * Provider-neutral tool definitions for a list of manifest names.
+ * @param {string[]} names
+ * @returns {Array<{name: string, description: string, inputSchema: object}>}
+ */
+export function toolDefinitionsFor(names) {
+  return (names ?? []).map((name) => {
+    const spec = TOOL_MANIFEST[name];
+    if (!spec) {
+      throw new Error(`unknown tool "${name}" — valid tools: ${Object.keys(TOOL_MANIFEST).join(', ')}`);
+    }
+    return { name, description: spec.description, inputSchema: spec.inputSchema };
+  });
+}
+
+/**
+ * Map the model's named args onto the positional array createToolExecutor
+ * expects ({path, content} → ['path','content'] order; git's args array spreads).
+ * @param {string} name
+ * @param {object} named
+ * @returns {any[]}
+ */
+export function positionalToolArgs(name, named) {
+  const spec = TOOL_MANIFEST[name];
+  if (!spec) throw new Error(`unknown tool "${name}" — valid tools: ${Object.keys(TOOL_MANIFEST).join(', ')}`);
+  const source = named && typeof named === 'object' ? named : {};
+  if (spec.spread) {
+    const arr = source[spec.argOrder[0]];
+    return Array.isArray(arr) ? arr.map(String) : [];
+  }
+  return spec.argOrder.map((key) => source[key]);
+}
+
 // ── SSRF guard ────────────────────────────────────────────────────────────────
 
 /** @returns {boolean} true when the dotted-quad v4 address is private/internal */
@@ -170,8 +274,14 @@ export function createToolExecutor(options) {
     return abs;
   };
 
-  const requireUnattendedApproval = (tool) => {
-    if (safety.requireApprovalFor?.includes(tool)) {
+  const requireUnattendedApproval = (tool, command) => {
+    // allowTestCommands is a deliberately narrow allowlist (EXACT string match
+    // on the trimmed command, run_bash only) so test-gated verification can run
+    // headless without opening arbitrary shell. It skips ONLY the approval
+    // requirement — blockedCommands and dryRun still apply.
+    const allowlisted = tool === 'run_bash' && command !== undefined &&
+      (safety.allowTestCommands ?? []).includes(String(command).trim());
+    if (!allowlisted && safety.requireApprovalFor?.includes(tool)) {
       throw new Error(
         `${tool} requires approval and the daemon has no interactive approval channel. ` +
         `Run this workflow through a platform plugin, or remove "${tool}" from safety.requireApprovalFor in ~/.odw/config.json.`
@@ -282,8 +392,8 @@ export function createToolExecutor(options) {
     },
 
     run_bash: async (command) => {
-      requireUnattendedApproval('run_bash');
       const cmd = String(command ?? '');
+      requireUnattendedApproval('run_bash', cmd);
       // Case-insensitive: Windows command names (Remove-Item, FORMAT) are
       // case-insensitive, so a case-sensitive guard would be trivially bypassed.
       const lower = cmd.toLowerCase();
