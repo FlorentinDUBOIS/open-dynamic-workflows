@@ -71,3 +71,4 @@ console.log('  odw-daemon start                         # or: npm start');
 console.log('  odw-daemon run --prompt "workflow: ..."  # or: npm run odw -- run --prompt "..."');
 console.log('  odw-daemon integrate mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw');
 console.log('  odw-daemon doctor all                    # verify daemon + agent wiring');
+console.log('  npm run smoke:hosts                      # temp live install + host CLI probes');
