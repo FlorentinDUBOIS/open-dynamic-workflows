@@ -105,11 +105,11 @@ odw-daemon run --prompt "workflow: find every TODO that hides a real bug" --cwd 
 Or wire it directly into your agentic coder from the clone:
 
 ```bash
-odw-daemon integrate mcp          # writes .mcp.json for any mcpServers JSON client
+odw-daemon integrate mcp          # writes .mcp.json + AGENTS.md instructions
 odw-daemon integrate codex        # MCP + Codex skill
-odw-daemon integrate cursor       # writes .cursor/mcp.json in the current project
-odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json for Kimi Code
-odw-daemon integrate zed          # writes .zed/settings.json context_servers
+odw-daemon integrate cursor       # writes .cursor/mcp.json + Cursor rule
+odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json + AGENTS.md
+odw-daemon integrate zed          # writes .zed/settings.json + AGENTS.md
 odw-daemon integrate zcode        # generic MCP + Zed-style project settings
 odw-daemon integrate opencode     # local OpenCode plugin wrapper + slash commands
 odw-daemon integrate antigravity  # Gemini/Antigravity skill + saved workflow
@@ -179,7 +179,7 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape. Host-specific MCP installers sit beside it: `integrate cursor` for Cursor, `integrate kimi` for Kimi Code's `~/.kimi-code/mcp.json`, `integrate zed` for Zed `context_servers`, and `integrate zcode` for generic MCP plus Zed-style project settings.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds a Cursor project rule, `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json` plus `AGENTS.md`, `integrate zed` writes Zed `context_servers` plus `AGENTS.md`, and `integrate zcode` writes generic MCP plus Zed-style project settings.
 
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 
@@ -187,11 +187,11 @@ The adapters are how your existing tool drives the engine. The easiest default i
 
 | Editor / agent | How it connects | No-key, no-daemon native mode? |
 | --- | --- | --- |
-| **Generic MCP hosts** | `odw-daemon integrate mcp` writes `.mcp.json` with an `odw` server for clients that import the common `mcpServers` JSON shape | **No** - MCP is a tool bridge, not host-model execution |
-| **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json` | **No** - same MCP bridge |
-| **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers`; `integrate zcode` writes both generic `.mcp.json` and Zed-style settings | **No** - same MCP bridge |
+| **Generic MCP hosts** | `odw-daemon integrate mcp` writes `.mcp.json` plus managed `AGENTS.md` instructions for clients that import the common `mcpServers` JSON shape | **No** - MCP is a tool bridge, not host-model execution |
+| **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json` plus managed `AGENTS.md` instructions | **No** - same MCP bridge |
+| **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers` plus managed `AGENTS.md`; `integrate zcode` writes both generic `.mcp.json` and Zed-style settings | **No** - same MCP bridge |
 | **Codex** | `odw-daemon integrate codex` installs both MCP (`~/.codex/config.toml`) and the `odw` skill (`~/.agents/skills/odw`) | **No** — Codex exposes MCP/tools and skills, but no extension API to invoke the host model; full ODW uses the daemon |
-| **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json`; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
+| **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json` plus a Cursor project rule; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
 | **OpenCode** | `odw-daemon integrate opencode` writes a local plugin wrapper and `/ultracode` + `/workflows` commands | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
 | **Antigravity · OpenClaw** | `odw-daemon integrate antigravity` installs the Gemini/Antigravity skill + saved workflow; `integrate openclaw` installs the ClawHub-format skill | **No** — these hosts expose no documented model API to extensions, so the keyless path is the host orchestrating itself natively (not the ODW engine); the full engine needs the daemon + one key |
 | **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | n/a (UI client over the daemon API) |

@@ -21,15 +21,15 @@ The server is stdio-based and probes the daemon lazily: it starts fine before th
 Preferred local setup from a clone:
 
 ```bash
-odw-daemon integrate mcp     # writes .mcp.json for generic MCP clients
+odw-daemon integrate mcp     # writes .mcp.json + AGENTS.md for generic MCP clients
 odw-daemon integrate codex   # writes ~/.codex/config.toml
-odw-daemon integrate cursor  # writes .cursor/mcp.json in the current project
-odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json
-odw-daemon integrate zed     # writes .zed/settings.json context_servers
+odw-daemon integrate cursor  # writes .cursor/mcp.json + a Cursor rule
+odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json + AGENTS.md
+odw-daemon integrate zed     # writes .zed/settings.json context_servers + AGENTS.md
 odw-daemon doctor mcp        # verifies the config and daemon health
 ```
 
-Generic MCP clients (`.mcp.json`), Kimi Code (`~/.kimi-code/mcp.json`), Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape:
+Generic MCP clients (`.mcp.json`), Kimi Code (`~/.kimi-code/mcp.json`), Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape. The installer also writes small local instructions (`AGENTS.md` or a Cursor rule) so `workflow:`, `ultracode`, and `/deep-research` requests naturally route to the ODW tools.
 
 ```json
 {

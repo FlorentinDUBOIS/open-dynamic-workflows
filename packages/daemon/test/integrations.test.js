@@ -41,6 +41,11 @@ test('installCursorMcp writes an idempotent .cursor/mcp.json with an odw server'
     assert.deepEqual(Object.keys(data.mcpServers), ['odw']);
     assert.equal(data.mcpServers.odw.command, 'node');
     assert.ok(data.mcpServers.odw.args[0].includes('mcp-server'));
+
+    const rule = readFileSync(join(targetDir, '.cursor', 'rules', 'open-dynamic-workflows.mdc'), 'utf8');
+    assert.match(rule, /alwaysApply: true/);
+    assert.match(rule, /odw_run/);
+    assert.match(rule, /ultracode/);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -62,6 +67,12 @@ test('installGenericMcpConfig writes an importable project MCP config', () => {
     assert.deepEqual(Object.keys(data.mcpServers).sort(), ['existing', 'odw']);
     assert.equal(data.mcpServers.odw.command, 'node');
     assert.ok(data.mcpServers.odw.args[0].includes('mcp-server'));
+
+    const agents = readFileSync(join(targetDir, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /BEGIN open-dynamic-workflows/);
+    assert.match(agents, /workflow:/);
+    assert.match(agents, /odw_run/);
+    assert.equal((agents.match(/BEGIN open-dynamic-workflows/g) ?? []).length, 1);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -69,15 +80,18 @@ test('installGenericMcpConfig writes an importable project MCP config', () => {
 
 test('installKimiMcp writes Kimi Code CLI global MCP config', () => {
   const home = tempDir('odw-kimi-');
+  const targetDir = tempDir('odw-kimi-target-');
   try {
-    installKimiMcp({ home, repoRoot });
-    installKimiMcp({ home, repoRoot });
+    installKimiMcp({ home, targetDir, repoRoot });
+    installKimiMcp({ home, targetDir, repoRoot });
 
     const data = JSON.parse(readFileSync(join(home, '.kimi-code', 'mcp.json'), 'utf8'));
     assert.deepEqual(Object.keys(data.mcpServers), ['odw']);
     assert.equal(data.mcpServers.odw.command, 'node');
     assert.ok(data.mcpServers.odw.args[0].includes('mcp-server'));
+    assert.match(readFileSync(join(targetDir, 'AGENTS.md'), 'utf8'), /Kimi Code/);
   } finally {
+    rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -101,6 +115,7 @@ test('installZedMcp writes project Zed context server settings', () => {
     assert.deepEqual(Object.keys(data.context_servers).sort(), ['existing', 'odw']);
     assert.equal(data.context_servers.odw.command, 'node');
     assert.ok(data.context_servers.odw.args[0].includes('mcp-server'));
+    assert.match(readFileSync(join(targetDir, 'AGENTS.md'), 'utf8'), /Zed/);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -193,10 +208,11 @@ test('doctorAgentIntegration reports missing integration files without throwing'
 
     assert.equal(result.kind, 'kimi');
     assert.equal(result.ok, false);
-    assert.equal(result.checks.length, 1);
-    assert.equal(result.checks[0].ok, false);
+    assert.equal(result.checks.length, 2);
+    assert.ok(result.checks.every((check) => check.ok === false));
     assert.match(result.checks[0].message, /missing/);
     assert.match(result.checks[0].path, /\.kimi-code/);
+    assert.equal(result.checks[1].label, 'kimi agent instructions');
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -212,9 +228,11 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     const result = doctorAgentIntegration('all', { targetDir, home, repoRoot });
     assert.equal(result.kind, 'all');
     assert.equal(result.ok, true);
-    assert.ok(result.checks.length >= 11);
+    assert.ok(result.checks.length >= 15);
     assert.ok(result.checks.some((check) => check.label === 'kimi mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
+    assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.every((check) => check.ok));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });

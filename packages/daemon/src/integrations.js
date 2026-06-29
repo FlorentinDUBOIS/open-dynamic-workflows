@@ -16,6 +16,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const DEFAULT_REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const MANAGED_BEGIN = '# BEGIN open-dynamic-workflows';
 const MANAGED_END = '# END open-dynamic-workflows';
+const AGENTS_BEGIN = '<!-- BEGIN open-dynamic-workflows -->';
+const AGENTS_END = '<!-- END open-dynamic-workflows -->';
 
 export function mcpServerCommand({ repoRoot = DEFAULT_REPO_ROOT } = {}) {
   return {
@@ -27,19 +29,22 @@ export function mcpServerCommand({ repoRoot = DEFAULT_REPO_ROOT } = {}) {
 export function installCursorMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const path = join(targetDir, '.cursor', 'mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
-  return { kind: 'cursor', path, server: current.mcpServers.odw };
+  const rulePath = installCursorRule({ targetDir });
+  return { kind: 'cursor', path, rulePath, server: current.mcpServers.odw };
 }
 
 export function installGenericMcpConfig({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const path = join(targetDir, '.mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
-  return { kind: 'mcp', path, server: current.mcpServers.odw };
+  const instructionsPath = installAgentInstructions({ targetDir, host: 'generic MCP hosts' });
+  return { kind: 'mcp', path, instructionsPath, server: current.mcpServers.odw };
 }
 
-export function installKimiMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installKimiMcp({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const path = join(home, '.kimi-code', 'mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
-  return { kind: 'kimi', path, server: current.mcpServers.odw };
+  const instructionsPath = installAgentInstructions({ targetDir, host: 'Kimi Code' });
+  return { kind: 'kimi', path, instructionsPath, server: current.mcpServers.odw };
 }
 
 export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -48,7 +53,8 @@ export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_RE
   current.context_servers = objectOrEmpty(current.context_servers);
   current.context_servers.odw = mcpServerCommand({ repoRoot });
   writeJson(path, current);
-  return { kind: 'zed', path, server: current.context_servers.odw };
+  const instructionsPath = installAgentInstructions({ targetDir, host: 'Zed' });
+  return { kind: 'zed', path, instructionsPath, server: current.context_servers.odw };
 }
 
 export function installCodexMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -168,7 +174,10 @@ function doctorChecksFor(kind, options = {}) {
   switch (kind) {
     case 'mcp':
     case 'generic-mcp':
-      return [checkMcpJson('generic mcp config', join(options.targetDir ?? process.cwd(), '.mcp.json'), 'mcpServers', options)];
+      return [
+        checkMcpJson('generic mcp config', join(options.targetDir ?? process.cwd(), '.mcp.json'), 'mcpServers', options),
+        checkAgentInstructions('generic agent instructions', options.targetDir ?? process.cwd()),
+      ];
     case 'codex':
       return [...doctorChecksFor('codex-mcp', options), ...doctorChecksFor('codex-skill', options)];
     case 'codex-mcp':
@@ -182,12 +191,25 @@ function doctorChecksFor(kind, options = {}) {
         checkExists('codex daemon bridge', join(options.home ?? homedir(), '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
       ];
     case 'cursor':
-      return [checkMcpJson('cursor mcp config', join(options.targetDir ?? process.cwd(), '.cursor', 'mcp.json'), 'mcpServers', options)];
+      return [
+        checkMcpJson('cursor mcp config', join(options.targetDir ?? process.cwd(), '.cursor', 'mcp.json'), 'mcpServers', options),
+        checkText('cursor workflow rule', join(options.targetDir ?? process.cwd(), '.cursor', 'rules', 'open-dynamic-workflows.mdc'), [
+          'alwaysApply: true',
+          'odw_run',
+          'ultracode',
+        ]),
+      ];
     case 'kimi':
     case 'kimi-code':
-      return [checkMcpJson('kimi mcp config', join(options.home ?? homedir(), '.kimi-code', 'mcp.json'), 'mcpServers', options)];
+      return [
+        checkMcpJson('kimi mcp config', join(options.home ?? homedir(), '.kimi-code', 'mcp.json'), 'mcpServers', options),
+        checkAgentInstructions('kimi agent instructions', options.targetDir ?? process.cwd()),
+      ];
     case 'zed':
-      return [checkMcpJson('zed context server config', join(options.targetDir ?? process.cwd(), '.zed', 'settings.json'), 'context_servers', options)];
+      return [
+        checkMcpJson('zed context server config', join(options.targetDir ?? process.cwd(), '.zed', 'settings.json'), 'context_servers', options),
+        checkAgentInstructions('zed agent instructions', options.targetDir ?? process.cwd()),
+      ];
     case 'zcode':
       return [...doctorChecksFor('mcp', options), ...doctorChecksFor('zed', options)];
     case 'opencode':
@@ -219,6 +241,51 @@ function doctorChecksFor(kind, options = {}) {
   }
 }
 
+function installAgentInstructions({ targetDir = process.cwd(), host = 'MCP host' } = {}) {
+  const path = join(targetDir, 'AGENTS.md');
+  const block = [
+    AGENTS_BEGIN,
+    '## Open Dynamic Workflows',
+    '',
+    `For ${host}, route substantial workflow requests through the ODW MCP server when it is available.`,
+    '',
+    'Use ODW when the user says `workflow:`, `ultracode`, `/deep-research`, or asks for broad multi-file work that benefits from planning, parallel agents, verification, or crash-resumable execution.',
+    '',
+    '- Call `odw_health` first when uncertain whether the daemon is reachable.',
+    '- Use `odw_run` for direct execution. Use `odw_plan` first when the user asks to review the plan, the task is expensive, or mutation risk is high.',
+    '- Report the workflow id, topology, agent count, and cost/time estimate instead of redoing the work manually.',
+    '- Use `odw_status`, `odw_result`, and `odw_list` to monitor and summarize running work.',
+    '- If ODW is unavailable, say exactly what is missing (`odw-daemon start` or `odw-daemon doctor <agent>`) and then fall back to the host agent native planning only if useful.',
+    '',
+    AGENTS_END,
+    '',
+  ].join('\n');
+  writeText(path, replaceManagedSection(readText(path, ''), block, AGENTS_BEGIN, AGENTS_END));
+  return path;
+}
+
+function installCursorRule({ targetDir = process.cwd() } = {}) {
+  const path = join(targetDir, '.cursor', 'rules', 'open-dynamic-workflows.mdc');
+  writeText(path, [
+    '---',
+    'description: Route workflow, ultracode, and deep-research requests through Open Dynamic Workflows',
+    'alwaysApply: true',
+    '---',
+    '',
+    '# Open Dynamic Workflows',
+    '',
+    'When the user says `workflow:`, `ultracode`, `/deep-research`, or asks for broad multi-file work that benefits from planning, parallel agents, verification, or crash-resumable execution, prefer the ODW MCP tools.',
+    '',
+    '- Call `odw_health` first when uncertain whether the daemon is reachable.',
+    '- Use `odw_run` for direct execution. Use `odw_plan` first when the user asks to review the plan, the task is expensive, or mutation risk is high.',
+    '- Report the workflow id, topology, agent count, and cost/time estimate instead of redoing the work manually.',
+    '- Use `odw_status`, `odw_result`, and `odw_list` to monitor and summarize running work.',
+    '- If ODW is unavailable, say exactly what is missing (`odw-daemon start` or `odw-daemon doctor cursor`) and then fall back to Cursor-native planning only if useful.',
+    '',
+  ].join('\n'));
+  return path;
+}
+
 function checkMcpJson(label, path, section, options) {
   if (!existsSync(path)) return check(false, label, path, 'missing');
   let json;
@@ -243,6 +310,14 @@ function checkText(label, path, fragments) {
   const missing = fragments.find((fragment) => !text.includes(fragment));
   if (missing) return check(false, label, path, `missing ${missing}`);
   return check(true, label, path, 'ready');
+}
+
+function checkAgentInstructions(label, targetDir) {
+  return checkText(label, join(targetDir, 'AGENTS.md'), [
+    AGENTS_BEGIN,
+    'odw_run',
+    'ultracode',
+  ]);
 }
 
 function checkExists(label, path) {
@@ -272,8 +347,12 @@ function copyFresh(src, dest) {
 }
 
 function replaceManagedBlock(text, block) {
+  return replaceManagedSection(text, block, MANAGED_BEGIN, MANAGED_END);
+}
+
+function replaceManagedSection(text, block, begin, end) {
   const clean = String(text ?? '').replace(/^\uFEFF/, '').trimEnd();
-  const pattern = new RegExp(`${escapeRe(MANAGED_BEGIN)}[\\s\\S]*?${escapeRe(MANAGED_END)}\\n?`, 'm');
+  const pattern = new RegExp(`${escapeRe(begin)}[\\s\\S]*?${escapeRe(end)}\\n?`, 'm');
   if (pattern.test(clean)) return `${clean.replace(pattern, block).trimEnd()}\n`;
   return `${clean}${clean ? '\n\n' : ''}${block}`;
 }
