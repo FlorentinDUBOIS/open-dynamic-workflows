@@ -4,7 +4,7 @@
   "description": "open-dynamic-workflows adapter for Google Antigravity: skill folder, saved workflows, daemon bridge.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/*.js\""
   },
   "engines": {
     "node": ">=20"

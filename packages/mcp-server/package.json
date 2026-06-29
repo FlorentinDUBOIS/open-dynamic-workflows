@@ -7,7 +7,7 @@
     "odw-mcp": "src/index.js"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/*.js\""
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

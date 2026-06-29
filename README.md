@@ -102,6 +102,23 @@ odw-daemon start
 odw-daemon run --prompt "workflow: find every TODO that hides a real bug" --cwd ./my-project
 ```
 
+Or wire it directly into your agentic coder from the clone:
+
+```bash
+odw-daemon integrate mcp          # writes .mcp.json for any mcpServers JSON client
+odw-daemon integrate codex        # MCP + Codex skill
+odw-daemon integrate cursor       # writes .cursor/mcp.json in the current project
+odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json for Kimi Code
+odw-daemon integrate zed          # writes .zed/settings.json context_servers
+odw-daemon integrate zcode        # generic MCP + Zed-style project settings
+odw-daemon integrate opencode     # local OpenCode plugin wrapper + slash commands
+odw-daemon integrate antigravity  # Gemini/Antigravity skill + saved workflow
+odw-daemon integrate openclaw     # OpenClaw skill folder
+odw-daemon doctor all             # verify configs and daemon readiness
+```
+
+After that, open the target agent and say `workflow: ...`, `ultracode ...`, or `/deep-research ...`.
+
 If a model has no key or route, `odw-daemon run` tells you up front — before planning — exactly which line of the config to fix. No silent first-run failures.
 
 <details>
@@ -162,15 +179,24 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-The adapters are how your existing tool drives the engine. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API. Each is a separate package — install only what you use.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape. Host-specific MCP installers sit beside it: `integrate cursor` for Cursor, `integrate kimi` for Kimi Code's `~/.kimi-code/mcp.json`, `integrate zed` for Zed `context_servers`, and `integrate zcode` for generic MCP plus Zed-style project settings.
+
+Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
+
+The adapters are how your existing tool drives the engine. The easiest default is MCP: `odw-daemon integrate codex` and `odw-daemon integrate cursor` point the host at the local `odw-mcp` bridge, so the host gets `odw_plan`, `odw_run`, `odw_status`, `odw_result`, and `odw_control` tools without the compiled orchestration script entering chat context. Native adapters sit beside that where the host exposes better hooks. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API.
 
 | Editor / agent | How it connects | No-key, no-daemon native mode? |
 | --- | --- | --- |
-| **OpenCode** | drop-in plugin (`"plugin": ["odw-opencode"]` in `opencode.json`) — triggers on "run a workflow", `ultracode`, or `/deep-research` | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
-| **Codex · Antigravity · OpenClaw** | a skill folder (`SKILL.md` + a zero-dependency bridge script) that teaches the agent to plan first, then call the daemon — the OpenClaw one is ClawHub-publishable | **No** — these hosts expose no model API to extensions, so the keyless path is the host orchestrating itself natively (not the ODW engine); the full engine needs the daemon + one key |
+| **Generic MCP hosts** | `odw-daemon integrate mcp` writes `.mcp.json` with an `odw` server for clients that import the common `mcpServers` JSON shape | **No** - MCP is a tool bridge, not host-model execution |
+| **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json` | **No** - same MCP bridge |
+| **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers`; `integrate zcode` writes both generic `.mcp.json` and Zed-style settings | **No** - same MCP bridge |
+| **Codex** | `odw-daemon integrate codex` installs both MCP (`~/.codex/config.toml`) and the `odw` skill (`~/.agents/skills/odw`) | **No** — Codex exposes MCP/tools and skills, but no extension API to invoke the host model; full ODW uses the daemon |
+| **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json`; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
+| **OpenCode** | `odw-daemon integrate opencode` writes a local plugin wrapper and `/ultracode` + `/workflows` commands | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
+| **Antigravity · OpenClaw** | `odw-daemon integrate antigravity` installs the Gemini/Antigravity skill + saved workflow; `integrate openclaw` installs the ClawHub-format skill | **No** — these hosts expose no documented model API to extensions, so the keyless path is the host orchestrating itself natively (not the ODW engine); the full engine needs the daemon + one key |
 | **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | n/a (UI client over the daemon API) |
 
-Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex is MCP-client-only with no host-model API; Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by all three. Those adapters use the extension points those tools actually have — skills, `AGENTS.md`, saved workflows — and say so out loud rather than pretend to be keyless.
+Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex, Cursor, Kimi/Zed-style MCP clients, and similar hosts are best served by the MCP bridge today. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — MCP, skills, `AGENTS.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 
 ---
 

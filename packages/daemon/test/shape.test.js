@@ -8,6 +8,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // P3 scaffolding tests: module surface + schema contract. Behavior lands in P4.
 
+test('daemon package uses a Node 20-24 compatible better-sqlite3 line', () => {
+  const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  assert.match(pkg.dependencies['better-sqlite3'], /^\^12\./);
+});
+
 test('daemon modules export the contracted surface', async () => {
   const mods = {
     './src/config.js': ['odwHome', 'loadConfig', 'apiKeyFor'],

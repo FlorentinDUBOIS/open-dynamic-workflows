@@ -18,7 +18,18 @@ The server is stdio-based and probes the daemon lazily: it starts fine before th
 
 ## Configuration snippets
 
-Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape:
+Preferred local setup from a clone:
+
+```bash
+odw-daemon integrate mcp     # writes .mcp.json for generic MCP clients
+odw-daemon integrate codex   # writes ~/.codex/config.toml
+odw-daemon integrate cursor  # writes .cursor/mcp.json in the current project
+odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json
+odw-daemon integrate zed     # writes .zed/settings.json context_servers
+odw-daemon doctor mcp        # verifies the config and daemon health
+```
+
+Generic MCP clients (`.mcp.json`), Kimi Code (`~/.kimi-code/mcp.json`), Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape:
 
 ```json
 {
@@ -50,6 +61,19 @@ Codex TOML equivalent:
 [mcp_servers.odw]
 command = "npx"
 args = ["-y", "odw-mcp-server"]
+```
+
+Zed settings equivalent:
+
+```json
+{
+  "context_servers": {
+    "odw": {
+      "command": "npx",
+      "args": ["-y", "odw-mcp-server"]
+    }
+  }
+}
 ```
 
 ## Environment variables

@@ -12,12 +12,12 @@
     "odw-daemon": "src/cli.js"
   },
   "scripts": {
-    "test": "node --test test/",
-    "coverage": "c8 --check-coverage --lines 80 --include \"src/**\" --exclude \"src/cli.js\" node --test test/"
+    "test": "node --test \"test/*.js\"",
+    "coverage": "c8 --check-coverage --lines 80 --include \"src/**\" --exclude \"src/cli.js\" node --test \"test/*.js\""
   },
   "dependencies": {
     "ajv": "^8.20.0",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^12.11.1",
     "commander": "^14.0.2",
     "express": "^5.2.1",
     "odw-core": "^0.1.0",

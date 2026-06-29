@@ -8,11 +8,13 @@
  *   restart [--resume]
  *   logs [--follow] [--lines N]
  *   run --prompt "<text>" | --script <file> [--cwd <dir>] [--wait]
+ *   integrate <agent>
+ *   doctor [agent]
  *   db-check
  */
 
 import { readFileSync, existsSync, statSync, openSync, readSync, closeSync, watchFile, unwatchFile, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Command } from 'commander';
 import { DEFAULT_PORT, loadConfig, ensureHome } from './config.js';
@@ -341,6 +343,63 @@ program
   });
 
 program
+  .command('integrate')
+  .description('install ODW into an agentic coder (MCP, skill, or native plugin)')
+  .argument('<agent>', 'mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw|all')
+  .option('--target <dir>', 'project directory for project-local configs', process.cwd())
+  .option('--home <dir>', 'home directory for user-level configs', homedir())
+  .option('--repo <dir>', 'open-dynamic-workflows checkout to point adapters at')
+  .action(async (agent, opts) => {
+    const { installAgentIntegration } = await import('./integrations.js');
+    const result = installAgentIntegration(agent, {
+      targetDir: resolve(opts.target),
+      home: resolve(opts.home),
+      ...(opts.repo ? { repoRoot: resolve(opts.repo) } : {}),
+    });
+    console.log(`${color.ok('ok')} installed ${agent} integration`);
+    for (const line of integrationLines(result)) console.log(`  ${line}`);
+    console.log('');
+    console.log('next:');
+    console.log('  odw-daemon start');
+    console.log('  then ask your agent: workflow: audit this repo for real bugs');
+  });
+
+program
+  .command('doctor')
+  .description('check daemon readiness and installed agent integration files')
+  .argument('[agent]', 'mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw|all', 'all')
+  .option('--target <dir>', 'project directory for project-local configs', process.cwd())
+  .option('--home <dir>', 'home directory for user-level configs', homedir())
+  .option('--repo <dir>', 'open-dynamic-workflows checkout integrations should point at')
+  .option('--port <port>', 'daemon port to probe')
+  .action(async (agent, opts) => {
+    const { doctorAgentIntegration } = await import('./integrations.js');
+    const report = doctorAgentIntegration(agent, {
+      targetDir: resolve(opts.target),
+      home: resolve(opts.home),
+      ...(opts.repo ? { repoRoot: resolve(opts.repo) } : {}),
+    });
+
+    console.log(`${report.ok ? color.ok('[ok]') : color.err('[x]')} ${agent} integration ${report.ok ? 'ready' : 'needs attention'}`);
+    for (const item of report.checks) {
+      console.log(`  ${item.ok ? color.ok('[ok]') : color.err('[x]')} ${item.label.padEnd(30)} ${item.message}`);
+      console.log(`       ${color.dim(item.path)}`);
+    }
+
+    const config = loadConfig();
+    const port = Number(opts.port ?? config.daemon.port ?? DEFAULT_PORT);
+    const health = await healthcheck(port);
+    if (health) {
+      console.log(`${color.ok('[ok]')} daemon running on 127.0.0.1:${port}`);
+    } else {
+      console.log(`${color.warn('[!]')} daemon not running on 127.0.0.1:${port}`);
+      console.log('      start it with: odw-daemon start');
+    }
+
+    if (!report.ok || !health) process.exitCode = 1;
+  });
+
+program
   .command('db-check')
   .description('migration dry-run against a temporary database')
   .action(async () => {
@@ -363,3 +422,11 @@ program.parseAsync(process.argv).catch((error) => {
   console.error(`${color.err('✗')} ${error.message}`);
   process.exit(1);
 });
+
+function integrationLines(result) {
+  if (!result) return [];
+  if (Array.isArray(result.steps)) return result.steps.flatMap(integrationLines);
+  return Object.entries(result)
+    .filter(([key]) => key !== 'kind' && key !== 'server')
+    .map(([key, value]) => `${String(key).padEnd(12)} ${value}`);
+}

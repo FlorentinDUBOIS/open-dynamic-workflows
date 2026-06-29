@@ -64,8 +64,8 @@ The single environment variable the code reads is `ODW_DAEMON_PORT` (verified vi
 
 ## 5. 🧱 Tech Stack
 
-- **Node.js ≥ 20** (ESM throughout). Rationale: `p-queue` is ESM-only and the maintained `better-sqlite3` prebuilds require Node 20+.
-- **better-sqlite3 ^11.10.0** — synchronous SQLite with prebuilt Windows/macOS/Linux binaries (no compiler needed). Pinned to the ^11 line because ^12 dropped Node 20 prebuilds.
+- **Node.js ≥ 20** (ESM throughout). Rationale: `p-queue` is ESM-only and the maintained `better-sqlite3` prebuilds cover the supported Node range.
+- **better-sqlite3 ^12.11.1** — synchronous SQLite with prebuilt Windows/macOS/Linux binaries for Node 20/22/23/24+ (no compiler needed for normal installs).
 - **quickjs-emscripten 0.32.0** — WASM QuickJS sandbox. Pinned exactly (it is the security boundary).
 - **express ^5.2.1** + **ws ^8.21.0** — HTTP API and WebSocket events on loopback.
 - **p-queue ^9.3.0** — concurrency control for agent HTTP calls.
@@ -139,6 +139,8 @@ This is a locally-run developer tool, not a hosted service — "deployment" mean
 ## 11. 🔧 Operations
 
 - **Config:** `~/.odw/config.json` (see `.env.example` and §4). Holds `daemon` (port, concurrency, log level), `apiKeys` (per provider), `models` (planning / default / fallback), `budget`, `safety`, `git`, and optional `baseURLs` for OpenAI-compatible endpoints.
+- **Agent setup:** `odw-daemon integrate <mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw|all>` writes the supported MCP config, skill folder, or local plugin wrapper for that host. Use `--target <dir>` for project-local configs and `--home <dir>` for user-level config locations.
+- **Readiness check:** `odw-daemon doctor <agent>` verifies the expected integration files and daemon health, then exits non-zero with the missing file or start hint if setup is incomplete.
 - **OpenAI-compatible routing:** set `baseURLs.default` + `apiKeys.default` to use OpenCode Zen / Azure / vLLM / LM Studio / Groq with any model id; or `baseURLs.<name>` + a `name:model` model id for a named endpoint. Routing: `claude-*`→Anthropic, `gpt-*`/`o*`→OpenAI, `ollama:*`→Ollama, `name:model`→`baseURLs.name`, else→`baseURLs.default`.
 - **Reading a failure:** failed runs surface the reason at the top level — `odw-daemon status` / `GET /workflows/:id` include an `error` field, and `odw-daemon run` prints `reason:` on failure. `odw-daemon logs` has the full detail. Note free/small models occasionally return malformed JSON; the agent queue self-corrects by re-prompting with the validation error, but a model that never returns valid JSON will fail the run with a clear `did not match the required JSON shape` reason.
 - **Environment variables:** `ODW_DAEMON_PORT` (port override), `ODW_HOME` (data dir), and provider key fallbacks `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY`.
@@ -152,7 +154,7 @@ The decisions that shaped the codebase.
 
 - **Sandbox: quickjs-emscripten (WASM QuickJS).** Alternatives: `vm2` (abandoned 2023, critical CVEs), `node:vm` (not a security boundary), `isolated-vm` (needs a native toolchain), SES (irreversible global lockdown). Chose WASM-QuickJS for true isolation with a pure-JS install. Trade-off: values cross the boundary as JSON strings. Revisit if the host needs to pass live object handles.
 - **ESM, Node ≥ 20.** Alternatives: CommonJS on Node 18. `p-queue` v9 is ESM-only and SQLite prebuilds need Node 20. Trade-off: drops Node 18. Revisit when the LTS floor moves and `node:sqlite` is stable.
-- **better-sqlite3 ^11.** Alternative: `node:sqlite` (still experimental in any LTS). Synchronous, prebuilt, simple. Revisit at a Node-22 floor → ^12.
+- **better-sqlite3 ^12.** Alternative: `node:sqlite` (still experimental in some supported runtimes). Synchronous, prebuilt, simple across Node 20+.
 - **Adapters talk to the daemon only over HTTP.** Alternative: shared in-process library per host. Keeps each host package thin and the daemon the single source of truth. Trade-off: a network hop on loopback.
 - **Honest platform adapters.** Codex has no plugin marketplace and Antigravity no public automation API, so those adapters use real extension points (skills, `AGENTS.md`, saved workflows, the VS Code extension) and document the limits rather than faking a marketplace listing.
 
@@ -164,7 +166,6 @@ From `.studio/todos.md` and `.studio/blocked.md`.
 - **Daemon trust boundary is loopback + an 8 MB request limit, unauthenticated.** This is intentional for a localhost tool. Revisit before ever binding to a non-loopback interface (which would also need auth).
 - **WebSocket backpressure is unhandled** (fine for a localhost dashboard). Revisit if used over a slow link.
 - **OpenCode plugin lacks a `session.idle` background push** of daemon progress. Workaround: the `odw_status` / `odw_workflows` tools. Revisit when polling proves insufficient.
-- **better-sqlite3 pinned to ^11** for Node 20 prebuilds. Revisit when the Node floor moves to 22 → ^12.
 - **Codex marketplace / Antigravity automation API** do not exist; those adapters ship skills + bridge scripts. Revisit if/when official APIs land.
 
 ## 14. 📚 Lessons Learned
