@@ -330,9 +330,26 @@ test('installAntigravity wires Gemini and Antigravity MCP configs without clobbe
     assert.ok(result.geminiMcpPath.replace(/\\/g, '/').endsWith('.gemini/config/mcp_config.json'));
     assert.ok(result.antigravityCliMcpPath.replace(/\\/g, '/').endsWith('.gemini/antigravity-cli/mcp_config.json'));
     assert.ok(result.workspaceMcpPath.replace(/\\/g, '/').endsWith('.agents/mcp_config.json'));
+    assert.ok(result.globalPluginPath.replace(/\\/g, '/').endsWith('.gemini/config/plugins/odw'));
+    assert.ok(result.cliPluginPath.replace(/\\/g, '/').endsWith('.gemini/antigravity-cli/plugins/odw'));
+    assert.ok(result.workspacePluginPath.replace(/\\/g, '/').endsWith('.agents/plugins/odw'));
 
     const workflow = readFileSync(join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md'), 'utf8');
     assert.match(workflow, /\.gemini\/config\/skills\/odw\/scripts\/daemon-bridge\.js/);
+
+    for (const pluginDir of [result.globalPluginPath, result.cliPluginPath, result.workspacePluginPath]) {
+      const manifest = JSON.parse(readFileSync(join(pluginDir, 'plugin.json'), 'utf8'));
+      assert.equal(manifest.$schema, 'https://antigravity.google/schemas/v1/plugin.json');
+      assert.equal(manifest.name, 'odw');
+      assert.match(manifest.description, /Open Dynamic Workflows/);
+
+      const pluginMcp = JSON.parse(readFileSync(join(pluginDir, 'mcp_config.json'), 'utf8'));
+      assert.equal(pluginMcp.mcpServers.odw.command, 'node');
+      assert.ok(pluginMcp.mcpServers.odw.args[0].includes('mcp-server'));
+      assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'SKILL.md')));
+      assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+      assert.match(readFileSync(join(pluginDir, 'rules', 'odw.md'), 'utf8'), /odw_run/);
+    }
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });

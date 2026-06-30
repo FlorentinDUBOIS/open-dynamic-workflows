@@ -76,6 +76,38 @@ test('smoke-agent-hosts executes Windows command shims from paths with spaces', 
   }
 });
 
+test('smoke-agent-hosts accepts version output from a slow Windows shim', { skip: process.platform !== 'win32' }, () => {
+  const fakeBin = mkdtempSync(join(tmpdir(), 'odw slow fake bin '));
+  try {
+    writeFileSync(
+      join(fakeBin, 'opencode.cmd'),
+      '@echo off\r\necho 1.2.3\r\nping -n 30 127.0.0.1 >nul\r\n',
+      'utf8'
+    );
+    const pathValue = `${fakeBin}${delimiter}${process.env.PATH || ''}`;
+    const output = execFileSync(
+      process.execPath,
+      [join(repoRoot, 'scripts', 'smoke-agent-hosts.mjs'), '--json', '--require-host', 'opencode'],
+      {
+        encoding: 'utf8',
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          ODW_HOST_PROBE_TIMEOUT_MS: '1000',
+          PATH: pathValue,
+          Path: pathValue,
+        },
+      }
+    );
+    const report = JSON.parse(output);
+    const opencode = report.hosts.find((host) => host.name === 'opencode');
+    assert.equal(opencode.status, 'ok');
+    assert.equal(opencode.output, '1.2.3');
+  } finally {
+    safeRemoveTemp(fakeBin);
+  }
+});
+
 function safeRemoveTemp(path) {
   const resolvedPath = resolve(path);
   const resolvedTemp = resolve(tmpdir());

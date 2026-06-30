@@ -4,8 +4,9 @@ Google Antigravity adapter for open-dynamic-workflows.
 
 ## What this actually is
 
-Antigravity's supported extension points are skills (`~/.gemini/skills/`), saved workflows (`~/.gemini/antigravity/global_workflows/`), MCP servers, and, since it is a VS Code fork, VS Code extensions. This adapter ships:
+Antigravity's supported extension points are plugins, skills, saved workflows, MCP servers, and, since it is a VS Code fork, VS Code extensions. This adapter ships:
 
+- `plugin/`: canonical Antigravity plugin-layout bundle with `plugin.json`, plugin-scoped `mcp_config.json`, `skills/`, and `rules/`. The installer stages it into all three documented locations: `~/.gemini/config/plugins/odw`, `~/.gemini/antigravity-cli/plugins/odw`, and workspace `.agents/plugins/odw`.
 - `skills/odw/SKILL.md`: canonical ODW skill, installed into both `~/.gemini/config/skills/odw` and the legacy `~/.gemini/skills/odw` path, using the same bridge script style as the Codex adapter.
 - `workflows/odw-run.md`: a saved `/odw-run` workflow.
 - MCP config installers for `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and workspace `.agents/mcp_config.json`.
@@ -22,7 +23,7 @@ odw-daemon integrate antigravity
 odw-daemon doctor antigravity
 ```
 
-`integrate antigravity` preserves existing MCP servers and adds `mcpServers.odw` to Antigravity's global config, the Antigravity CLI config, and the workspace-local `.agents` config so both IDE and CLI-style hosts can see the ODW tools. It also installs the skill into Antigravity's config-scoped skills directory (`~/.gemini/config/skills/odw`) and the legacy skill directory (`~/.gemini/skills/odw`). For Gemini CLI's separate `~/.gemini/settings.json` file, run `odw-daemon integrate gemini`.
+`integrate antigravity` preserves existing MCP servers and adds `mcpServers.odw` to Antigravity's global config, the Antigravity CLI config, and the workspace-local `.agents` config so both IDE and CLI-style hosts can see the ODW tools. It also installs first-class plugin bundles into `~/.gemini/config/plugins/odw`, `~/.gemini/antigravity-cli/plugins/odw`, and `.agents/plugins/odw`, then keeps direct skill installs in Antigravity's config-scoped skills directory (`~/.gemini/config/skills/odw`) and legacy skill directory (`~/.gemini/skills/odw`) as compatibility fallbacks. For Gemini CLI's separate `~/.gemini/settings.json` file, run `odw-daemon integrate gemini`.
 
 For 100+ agents and crash-resume, the local daemon still needs to be running:
 

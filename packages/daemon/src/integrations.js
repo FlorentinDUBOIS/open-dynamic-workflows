@@ -139,6 +139,19 @@ export function installGeminiCommands({ targetDir = process.cwd(), repoRoot = DE
 }
 
 export function installAntigravity({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const globalPluginPath = installAntigravityPlugin({
+    dest: join(home, '.gemini', 'config', 'plugins', 'odw'),
+    repoRoot,
+  });
+  const cliPluginPath = installAntigravityPlugin({
+    dest: join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw'),
+    repoRoot,
+  });
+  const workspacePluginPath = installAntigravityPlugin({
+    dest: join(targetDir, '.agents', 'plugins', 'odw'),
+    repoRoot,
+  });
+
   const skillDest = join(home, '.gemini', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), skillDest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(skillDest, 'scripts'));
@@ -166,6 +179,9 @@ export function installAntigravity({ home = homedir(), targetDir = process.cwd()
     geminiMcpPath,
     antigravityCliMcpPath,
     workspaceMcpPath,
+    globalPluginPath,
+    cliPluginPath,
+    workspacePluginPath,
   };
 }
 
@@ -366,6 +382,9 @@ function doctorChecksFor(kind, options = {}) {
       ];
     case 'antigravity':
       return [
+        ...checkAntigravityPlugin('antigravity global plugin', join(options.home ?? homedir(), '.gemini', 'config', 'plugins', 'odw'), options),
+        ...checkAntigravityPlugin('antigravity cli plugin', join(options.home ?? homedir(), '.gemini', 'antigravity-cli', 'plugins', 'odw'), options),
+        ...checkAntigravityPlugin('antigravity workspace plugin', join(options.targetDir ?? process.cwd(), '.agents', 'plugins', 'odw'), options),
         checkExists('antigravity skill', join(options.home ?? homedir(), '.gemini', 'skills', 'odw', 'SKILL.md')),
         checkExists('antigravity config skill', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'SKILL.md')),
         checkExists('antigravity config skill bridge', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
@@ -505,6 +524,23 @@ function checkGeminiInstructions(label, targetDir) {
   ]);
 }
 
+function checkAntigravityPlugin(label, path, options) {
+  return [
+    checkText(`${label} manifest`, join(path, 'plugin.json'), [
+      '"$schema": "https://antigravity.google/schemas/v1/plugin.json"',
+      '"name": "odw"',
+      'Open Dynamic Workflows',
+    ]),
+    checkMcpJson(`${label} mcp config`, join(path, 'mcp_config.json'), 'mcpServers', options),
+    checkExists(`${label} skill`, join(path, 'skills', 'odw', 'SKILL.md')),
+    checkExists(`${label} skill bridge`, join(path, 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+    checkText(`${label} rule`, join(path, 'rules', 'odw.md'), [
+      'odw_run',
+      'ultracode',
+    ]),
+  ];
+}
+
 function checkExists(label, path) {
   return check(existsSync(path), label, path, existsSync(path) ? 'ready' : 'missing');
 }
@@ -543,6 +579,14 @@ function installCodexMarketplace({ home = homedir() } = {}) {
   current.plugins = plugins;
   writeJson(path, current);
   return path;
+}
+
+function installAntigravityPlugin({ dest, repoRoot }) {
+  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'plugin'), dest);
+  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), join(dest, 'skills', 'odw'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'odw', 'scripts'));
+  writeMcpServersJson(join(dest, 'mcp_config.json'), repoRoot);
+  return dest;
 }
 
 function writeMcpServersJson(path, repoRoot) {

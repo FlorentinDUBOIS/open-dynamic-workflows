@@ -62,6 +62,21 @@ try {
     join(targetDir, 'GEMINI.md'),
     join(targetDir, '.gemini', 'commands', 'odw.toml'),
     join(targetDir, '.gemini', 'commands', 'ultracode.toml'),
+    join(home, '.gemini', 'config', 'plugins', 'odw', 'plugin.json'),
+    join(home, '.gemini', 'config', 'plugins', 'odw', 'mcp_config.json'),
+    join(home, '.gemini', 'config', 'plugins', 'odw', 'skills', 'odw', 'SKILL.md'),
+    join(home, '.gemini', 'config', 'plugins', 'odw', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+    join(home, '.gemini', 'config', 'plugins', 'odw', 'rules', 'odw.md'),
+    join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw', 'plugin.json'),
+    join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw', 'mcp_config.json'),
+    join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw', 'skills', 'odw', 'SKILL.md'),
+    join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+    join(home, '.gemini', 'antigravity-cli', 'plugins', 'odw', 'rules', 'odw.md'),
+    join(targetDir, '.agents', 'plugins', 'odw', 'plugin.json'),
+    join(targetDir, '.agents', 'plugins', 'odw', 'mcp_config.json'),
+    join(targetDir, '.agents', 'plugins', 'odw', 'skills', 'odw', 'SKILL.md'),
+    join(targetDir, '.agents', 'plugins', 'odw', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+    join(targetDir, '.agents', 'plugins', 'odw', 'rules', 'odw.md'),
     join(home, '.gemini', 'config', 'mcp_config.json'),
     join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'),
     join(home, '.gemini', 'config', 'skills', 'odw', 'SKILL.md'),
@@ -156,20 +171,37 @@ async function probeHosts() {
 function runFoundCommand(found, args) {
   if (process.platform === 'win32' && /\.cmd$/i.test(found)) {
     const commandLine = [quoteCmdArg(found), ...args.map(quoteCmdArg)].join(' ');
-    return execFileAsync('cmd.exe', ['/d', '/s', '/c', `"${commandLine}"`], {
+    return execHostProbe('cmd.exe', ['/d', '/s', '/c', `"${commandLine}"`], {
       encoding: 'utf8',
-      timeout: 15_000,
+      timeout: hostProbeTimeoutMs(),
       windowsVerbatimArguments: true,
     });
   }
   if (process.platform === 'win32' && /\.ps1$/i.test(found)) {
-    return execFileAsync(
+    return execHostProbe(
       'powershell.exe',
       ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', found, ...args],
-      { encoding: 'utf8', timeout: 15_000 }
+      { encoding: 'utf8', timeout: hostProbeTimeoutMs() }
     );
   }
-  return execFileAsync(found, args, { encoding: 'utf8', timeout: 15_000 });
+  return execHostProbe(found, args, { encoding: 'utf8', timeout: hostProbeTimeoutMs() });
+}
+
+async function execHostProbe(command, args, options) {
+  try {
+    return await execFileAsync(command, args, options);
+  } catch (error) {
+    if (error.killed && firstLine(error.stdout || error.stderr)) {
+      return { stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
+    }
+    throw error;
+  }
+}
+
+function hostProbeTimeoutMs() {
+  const value = Number(process.env.ODW_HOST_PROBE_TIMEOUT_MS);
+  if (Number.isFinite(value) && value > 0) return value;
+  return 45_000;
 }
 
 function quoteCmdArg(value) {
