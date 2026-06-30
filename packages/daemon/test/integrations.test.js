@@ -143,6 +143,15 @@ test('installGeminiMcp writes Gemini CLI settings and project instructions', () 
     assert.equal(result.kind, 'gemini');
     assert.ok(result.path.replace(/\\/g, '/').endsWith('.gemini/settings.json'));
     assert.ok(result.instructionsPath.endsWith('GEMINI.md'));
+    assert.ok(result.commandsPath.endsWith(join('.gemini', 'commands')));
+
+    const odwCommand = readFileSync(join(targetDir, '.gemini', 'commands', 'odw.toml'), 'utf8');
+    const ultracodeCommand = readFileSync(join(targetDir, '.gemini', 'commands', 'ultracode.toml'), 'utf8');
+    assert.match(odwCommand, /description = "Run a task through Open Dynamic Workflows"/);
+    assert.match(odwCommand, /mcp_odw_odw_run/);
+    assert.match(odwCommand, /\{\{args\}\}/);
+    assert.match(ultracodeCommand, /description = "Run an ultracode workflow through Open Dynamic Workflows"/);
+    assert.match(ultracodeCommand, /mcp_odw_odw_run/);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -363,6 +372,8 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'kimi flow skill'));
     assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
+    assert.ok(result.checks.some((check) => check.label === 'gemini odw command'));
+    assert.ok(result.checks.some((check) => check.label === 'gemini ultracode command'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'zed agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));

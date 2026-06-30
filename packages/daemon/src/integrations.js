@@ -55,7 +55,8 @@ export function installGeminiMcp({ home = homedir(), targetDir = process.cwd(), 
   const path = join(home, '.gemini', 'settings.json');
   const current = writeMcpServersJson(path, repoRoot);
   const instructionsPath = installGeminiInstructions({ targetDir });
-  return { kind: 'gemini', path, instructionsPath, server: current.mcpServers.odw };
+  const commandsPath = installGeminiCommands({ targetDir, repoRoot });
+  return { kind: 'gemini', path, instructionsPath, commandsPath, server: current.mcpServers.odw };
 }
 
 export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -109,6 +110,14 @@ export function installZedSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_
   const dest = join(targetDir, '.agents', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  return dest;
+}
+
+export function installGeminiCommands({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.gemini', 'commands');
+  ensureDir(dest);
+  cpSync(join(repoRoot, 'packages', 'gemini-adapter', 'commands', 'odw.toml'), join(dest, 'odw.toml'));
+  cpSync(join(repoRoot, 'packages', 'gemini-adapter', 'commands', 'ultracode.toml'), join(dest, 'ultracode.toml'));
   return dest;
 }
 
@@ -283,6 +292,16 @@ function doctorChecksFor(kind, options = {}) {
       return [
         checkMcpJson('gemini mcp config', join(options.home ?? homedir(), '.gemini', 'settings.json'), 'mcpServers', options),
         checkGeminiInstructions('gemini project instructions', options.targetDir ?? process.cwd()),
+        checkText('gemini odw command', join(options.targetDir ?? process.cwd(), '.gemini', 'commands', 'odw.toml'), [
+          'description = "Run a task through Open Dynamic Workflows"',
+          'mcp_odw_odw_run',
+          '{{args}}',
+        ]),
+        checkText('gemini ultracode command', join(options.targetDir ?? process.cwd(), '.gemini', 'commands', 'ultracode.toml'), [
+          'description = "Run an ultracode workflow through Open Dynamic Workflows"',
+          'mcp_odw_odw_run',
+          '{{args}}',
+        ]),
       ];
     case 'zed':
       return [

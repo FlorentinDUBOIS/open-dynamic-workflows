@@ -109,7 +109,7 @@ odw-daemon integrate mcp          # writes .mcp.json + AGENTS.md instructions
 odw-daemon integrate codex        # MCP + Codex skill
 odw-daemon integrate cursor       # writes .cursor/mcp.json + Cursor rule + /odw skill
 odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json + /flow:odw skill
-odw-daemon integrate gemini       # writes ~/.gemini/settings.json + GEMINI.md
+odw-daemon integrate gemini       # writes ~/.gemini/settings.json + /odw + /ultracode
 odw-daemon integrate zed          # writes .zed/settings.json + /odw Agent Skill
 odw-daemon integrate zcode        # generic MCP + Zed-style project settings + skill
 odw-daemon integrate opencode     # local OpenCode plugin wrapper + slash commands
@@ -182,7 +182,7 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds Cursor MCP config, a project rule, and a project-local `.cursor/skills/odw` skill that can be invoked from Cursor Agent chat as `/odw`; `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json`, `AGENTS.md`, and a project-local `.kimi/skills/odw` flow skill invokable as `/flow:odw` or `/skill:odw`; `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json` plus `GEMINI.md`; `integrate zed` writes Zed `context_servers`, `AGENTS.md`, and a project-local `.agents/skills/odw` Agent Skill invokable with `/`; `integrate zcode` writes generic MCP plus the same Zed-style context-server config and skill; `integrate vscode` installs the local dashboard extension into `~/.vscode/extensions`; and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds Cursor MCP config, a project rule, and a project-local `.cursor/skills/odw` skill that can be invoked from Cursor Agent chat as `/odw`; `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json`, `AGENTS.md`, and a project-local `.kimi/skills/odw` flow skill invokable as `/flow:odw` or `/skill:odw`; `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json`, `GEMINI.md`, and project-local `.gemini/commands/odw.toml` plus `ultracode.toml` slash commands; `integrate zed` writes Zed `context_servers`, `AGENTS.md`, and a project-local `.agents/skills/odw` Agent Skill invokable with `/`; `integrate zcode` writes generic MCP plus the same Zed-style context-server config and skill; `integrate vscode` installs the local dashboard extension into `~/.vscode/extensions`; and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
 
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 
@@ -195,7 +195,7 @@ The adapters are how your existing tool drives the engine. The easiest default i
 | --- | --- | --- |
 | **Generic MCP hosts** | `odw-daemon integrate mcp` writes `.mcp.json` plus managed `AGENTS.md` instructions for clients that import the common `mcpServers` JSON shape | **No** - MCP is a tool bridge, not host-model execution |
 | **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json`, managed `AGENTS.md`, and `.kimi/skills/odw` so `/flow:odw` or `/skill:odw` opens the workflow playbook in Kimi | **No** - same MCP bridge |
-| **Gemini CLI** | `odw-daemon integrate gemini` writes `~/.gemini/settings.json` `mcpServers.odw` plus managed `GEMINI.md` instructions that name Gemini's `mcp_odw_*` tool aliases | **No** - same MCP bridge |
+| **Gemini CLI** | `odw-daemon integrate gemini` writes `~/.gemini/settings.json` `mcpServers.odw`, managed `GEMINI.md`, and `.gemini/commands/odw.toml` + `ultracode.toml` so `/odw` and `/ultracode` route through ODW | **No** - same MCP bridge |
 | **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers`, managed `AGENTS.md`, and `.agents/skills/odw` so `/odw` opens the workflow playbook in Zed Agent; `integrate zcode` writes both generic `.mcp.json` and the same Zed-style settings/skill | **No** - same MCP bridge |
 | **Codex** | `odw-daemon integrate codex` installs both MCP (`~/.codex/config.toml`) and the `odw` skill (`~/.agents/skills/odw`) | **No** — Codex exposes MCP/tools and skills, but no extension API to invoke the host model; full ODW uses the daemon |
 | **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json`, a Cursor project rule, and `.cursor/skills/odw` so `/odw` opens the workflow playbook inside Cursor Agent chat; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
@@ -324,6 +324,7 @@ packages/
   opencode-plugin/      OpenCode plugin + custom tools + slash commands
   codex-adapter/        Codex skill folder + daemon bridge
   antigravity-adapter/  Antigravity MCP configs + skill + saved workflow
+  gemini-adapter/       Gemini CLI custom /odw and /ultracode commands
   cursor-adapter/       Cursor Agent skill installed into .cursor/skills/odw
   kimi-adapter/         Kimi flow skill installed into .kimi/skills/odw
   zed-adapter/          Zed Agent skill installed into .agents/skills/odw

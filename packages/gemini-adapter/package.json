@@ -1,0 +1,11 @@
+{
+  "name": "odw-gemini",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Gemini CLI custom slash commands for Open Dynamic Workflows.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/*.js\""
+  }
+}
