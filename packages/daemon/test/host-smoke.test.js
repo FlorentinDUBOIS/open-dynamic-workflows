@@ -13,6 +13,14 @@ test('root package exposes a safe live host smoke command', () => {
   assert.equal(pkg.scripts['smoke:hosts'], 'node scripts/smoke-agent-hosts.mjs');
 });
 
+test('setup next steps advertise every supported integration including all mode', () => {
+  const setup = readFileSync(join(repoRoot, 'scripts', 'setup.mjs'), 'utf8');
+  assert.match(setup, /odw-daemon integrate all/);
+  for (const agent of ['mcp', 'codex', 'cursor', 'kimi', 'gemini', 'zed', 'zcode', 'opencode', 'vscode', 'antigravity', 'openclaw']) {
+    assert.match(setup, new RegExp(`\\b${agent}\\b`));
+  }
+});
+
 test('smoke-agent-hosts validates temp integrations and daemon readiness as JSON', () => {
   const output = execFileSync(
     process.execPath,

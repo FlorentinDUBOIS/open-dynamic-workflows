@@ -105,6 +105,7 @@ odw-daemon run --prompt "workflow: find every TODO that hides a real bug" --cwd 
 Or wire it directly into your agentic coder from the clone:
 
 ```bash
+odw-daemon integrate all          # one command for every supported adapter below
 odw-daemon integrate mcp          # writes .mcp.json + AGENTS.md instructions
 odw-daemon integrate codex        # Codex plugin + MCP + ODW/ultracode skills
 odw-daemon integrate cursor       # writes MCP + rule + /odw + /ultracode skills + subagent + dashboard
