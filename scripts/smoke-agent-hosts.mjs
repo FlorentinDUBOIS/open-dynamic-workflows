@@ -132,10 +132,12 @@ try {
       repoRoot,
       '--port',
       String(daemon.port),
+      '--json',
     ],
     { encoding: 'utf8', env: { ...process.env, ODW_HOME: home, ODW_DAEMON_PORT: String(daemon.port) } }
   );
-  report.doctor = { ok: /all integration .*ready/.test(doctor.stdout) && /daemon running/.test(doctor.stdout), stdout: doctor.stdout };
+  const doctorReport = JSON.parse(doctor.stdout);
+  report.doctor = doctorReport;
 
   if (!skipHostProbes) {
     report.hosts = await probeHosts();

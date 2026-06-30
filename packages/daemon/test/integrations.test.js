@@ -622,6 +622,11 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.equal(result.kind, 'all');
     assert.equal(result.ok, true);
     assert.ok(result.checks.length >= 15);
+    const agents = readFileSync(join(targetDir, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /Zed and zcode-compatible agents/);
+    const zedStyleSkill = readFileSync(join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'), 'utf8');
+    assert.match(zedStyleSkill, /Zed Agent and zcode/);
+    assert.match(zedStyleSkill, /doctor zed or zcode/);
     assert.ok(result.checks.some((check) => check.label === 'kimi mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'codex ultracode skill'));
     assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
@@ -634,6 +639,10 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'zed agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'zed ultracode agent skill'));
+    assert.ok(result.checks.some((check) => check.label === 'zcode generic mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'zcode context server config'));
+    assert.ok(result.checks.some((check) => check.label === 'zcode agent instructions'));
+    assert.ok(result.checks.some((check) => check.label === 'zcode ultracode agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));

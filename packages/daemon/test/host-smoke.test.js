@@ -25,6 +25,9 @@ test('smoke-agent-hosts validates temp integrations and daemon readiness as JSON
   assert.equal(report.integration.ok, true);
   assert.equal(report.daemon.ok, true);
   assert.equal(report.doctor.ok, true);
+  assert.equal(Object.hasOwn(report.doctor, 'stdout'), false);
+  assert.ok(report.doctor.integration.checks.some((check) => check.label === 'zcode agent instructions'));
+  assert.ok(report.doctor.integration.checks.some((check) => check.label === 'zcode ultracode agent skill'));
   assert.deepEqual(report.hosts, []);
   assert.ok(report.generatedFiles.some((path) => path.endsWith('AGENTS.md')));
   assert.ok(report.generatedFiles.some((path) => path.includes('.cursor') && path.endsWith('open-dynamic-workflows.mdc')));
