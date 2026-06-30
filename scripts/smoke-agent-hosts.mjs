@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFile } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -109,7 +109,18 @@ try {
     join(home, '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md'),
   ];
   const missing = report.generatedFiles.filter((file) => !existsSync(file));
-  report.integration = { ok: missing.length === 0, targetDir, home, missing };
+  const agentInstructionsPath = join(targetDir, 'AGENTS.md');
+  const agentInstructionsText = existsSync(agentInstructionsPath) ? readFileSync(agentInstructionsPath, 'utf8') : '';
+  report.integration = {
+    ok: missing.length === 0,
+    targetDir,
+    home,
+    missing,
+    agentInstructions: {
+      path: agentInstructionsPath,
+      combinedHostAudience: agentInstructionsText.includes('generic MCP hosts, Kimi Code, Zed, and zcode-compatible agents'),
+    },
+  };
 
   daemon = await startDaemon({
     port: 0,

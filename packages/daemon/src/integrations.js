@@ -315,31 +315,40 @@ export function installAgentIntegration(kind, options = {}) {
     case 'openclaw':
       return installOpenClaw(options);
     case 'all':
-      return {
-        kind,
-        steps: [
-          installGenericMcpConfig(options),
-          installCodexMcp(options),
-          installCodexPlugin(options),
-          installCodexSkill(options),
-          installCursorMcp(options),
-          installKimiMcp(options),
-          installGeminiMcp(options),
-          installZedMcp({
-            ...options,
-            host: 'Zed and zcode-compatible agents',
-            skillHost: 'Zed Agent and zcode',
-            doctorAgent: 'zed or zcode',
-          }),
-          installOpencodePlugin(options),
-          installVscodeExtension(options),
-          installAntigravity(options),
-          installOpenClaw(options),
-        ],
-      };
+      return installAllIntegrations(options);
     default:
       throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-plugin, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
   }
+}
+
+function installAllIntegrations(options = {}) {
+  const result = {
+    kind: 'all',
+    steps: [
+      installGenericMcpConfig(options),
+      installCodexMcp(options),
+      installCodexPlugin(options),
+      installCodexSkill(options),
+      installCursorMcp(options),
+      installKimiMcp(options),
+      installGeminiMcp(options),
+      installZedMcp({
+        ...options,
+        host: 'Zed and zcode-compatible agents',
+        skillHost: 'Zed Agent and zcode',
+        doctorAgent: 'zed or zcode',
+      }),
+      installOpencodePlugin(options),
+      installVscodeExtension(options),
+      installAntigravity(options),
+      installOpenClaw(options),
+    ],
+  };
+  const instructionsPath = installAgentInstructions({
+    targetDir: options.targetDir,
+    host: 'generic MCP hosts, Kimi Code, Zed, and zcode-compatible agents',
+  });
+  return { ...result, instructionsPath };
 }
 
 export function doctorAgentIntegration(kind = 'all', options = {}) {

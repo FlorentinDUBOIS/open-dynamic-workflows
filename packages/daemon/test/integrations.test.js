@@ -623,7 +623,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.equal(result.ok, true);
     assert.ok(result.checks.length >= 15);
     const agents = readFileSync(join(targetDir, 'AGENTS.md'), 'utf8');
-    assert.match(agents, /Zed and zcode-compatible agents/);
+    assert.match(agents, /generic MCP hosts, Kimi Code, Zed, and zcode-compatible agents/);
     const zedStyleSkill = readFileSync(join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'), 'utf8');
     assert.match(zedStyleSkill, /Zed Agent and zcode/);
     assert.match(zedStyleSkill, /doctor zed or zcode/);
