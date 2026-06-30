@@ -16,6 +16,15 @@ test('canonical Cursor skill exists with frontmatter and daemon steps', () => {
   assert.match(skill, /odw_run/);
 });
 
+test('canonical Cursor subagent exists with orchestrator frontmatter', () => {
+  const subagentPath = join(root, 'agents', 'odw-orchestrator.md');
+  const subagent = readFileSync(subagentPath, 'utf8');
+  assert.match(subagent, /^---\r?\nname: odw-orchestrator\r?\n/);
+  assert.match(subagent, /description: .*ultracode/);
+  assert.match(subagent, /model: inherit/);
+  assert.match(subagent, /odw_run/);
+});
+
 test('Cursor adapter intentionally reuses the zero-dependency daemon bridge at install time', () => {
   assert.ok(existsSync(join(root, '..', 'codex-adapter', 'scripts', 'daemon-bridge.js')));
 });

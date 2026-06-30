@@ -34,7 +34,7 @@ test('mcpServerCommand points every MCP host at the local ODW MCP server', () =>
   assert.ok(command.args[0].endsWith('packages/mcp-server/src/index.js'));
 });
 
-test('installCursorMcp writes MCP, rule, skill, and Cursor dashboard extension', () => {
+test('installCursorMcp writes MCP, rule, skill, subagent, and Cursor dashboard extension', () => {
   const home = tempDir('odw-cursor-home-');
   const targetDir = tempDir('odw-cursor-');
   try {
@@ -57,6 +57,13 @@ test('installCursorMcp writes MCP, rule, skill, and Cursor dashboard extension',
     assert.match(skill, /Cursor Agent/);
     assert.match(skill, /daemon-bridge\.js --check/);
     assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+
+    assert.ok(result.subagentPath.replace(/\\/g, '/').endsWith('.cursor/agents/odw-orchestrator.md'));
+    const subagent = readFileSync(join(targetDir, '.cursor', 'agents', 'odw-orchestrator.md'), 'utf8');
+    assert.match(subagent, /^---\r?\nname: odw-orchestrator\r?\n/);
+    assert.match(subagent, /model: inherit/);
+    assert.match(subagent, /odw_run/);
+    assert.match(subagent, /daemon-bridge\.js/);
 
     assert.ok(result.extensionPath.replace(/\\/g, '/').endsWith('.cursor/extensions/open-dynamic-workflows.odw-vscode-0.1.0'));
     assert.ok(existsSync(join(home, '.cursor', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'package.json')));
@@ -448,6 +455,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));
+    assert.ok(result.checks.some((check) => check.label === 'cursor odw orchestrator subagent'));
     assert.ok(result.checks.some((check) => check.label === 'cursor dashboard extension'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity config skill'));

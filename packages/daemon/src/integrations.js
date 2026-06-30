@@ -33,8 +33,9 @@ export function installCursorMcp({ home = homedir(), targetDir = process.cwd(), 
   const current = writeMcpServersJson(path, repoRoot);
   const rulePath = installCursorRule({ targetDir });
   const skillPath = installCursorSkill({ targetDir, repoRoot });
+  const subagentPath = installCursorSubagent({ targetDir, repoRoot });
   const extensionPath = installEditorExtension({ home, repoRoot, profileDir: '.cursor' }).path;
-  return { kind: 'cursor', path, rulePath, skillPath, extensionPath, server: current.mcpServers.odw };
+  return { kind: 'cursor', path, rulePath, skillPath, subagentPath, extensionPath, server: current.mcpServers.odw };
 }
 
 export function installGenericMcpConfig({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -113,6 +114,13 @@ export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAU
   const dest = join(targetDir, '.cursor', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  return dest;
+}
+
+export function installCursorSubagent({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.cursor', 'agents', 'odw-orchestrator.md');
+  ensureDir(dirname(dest));
+  cpSync(join(repoRoot, 'packages', 'cursor-adapter', 'agents', 'odw-orchestrator.md'), dest);
   return dest;
 }
 
@@ -323,6 +331,11 @@ function doctorChecksFor(kind, options = {}) {
         ]),
         checkExists('cursor agent skill', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'SKILL.md')),
         checkExists('cursor daemon bridge', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('cursor odw orchestrator subagent', join(options.targetDir ?? process.cwd(), '.cursor', 'agents', 'odw-orchestrator.md'), [
+          'name: odw-orchestrator',
+          'model: inherit',
+          'odw_run',
+        ]),
         checkExists('cursor dashboard extension', join(editorExtensionPath({ ...options, profileDir: '.cursor' }), 'package.json')),
         checkExists('cursor dashboard entrypoint', join(editorExtensionPath({ ...options, profileDir: '.cursor' }), 'extension.js')),
       ];
