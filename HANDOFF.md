@@ -109,7 +109,7 @@ The daemon logs newline-delimited JSON; `odw-daemon logs --follow` tails it. For
 
 ## 8. 🧪 Testing & Quality
 
-- **278 tests pass** across the workspace packages, including core, daemon, MCP server, OpenCode, Codex, Cursor, Kimi, Gemini, Zed/zcode-style skills, VS Code, Antigravity, and OpenClaw adapters.
+- **279 tests pass** across the workspace packages, including core, daemon, MCP server, OpenCode, Codex, Cursor, Kimi, Gemini, Zed/zcode-style skills, VS Code, Antigravity, and OpenClaw adapters.
 - **Coverage:** core **96.82%** lines, daemon **91.52%** lines, both over the enforced 80% gate (`c8 --check-coverage --lines 80`).
 - **Test pyramid:** unit (pure functions, providers with injected `fetch`, sandbox isolation), integration (a real HTTP daemon against an in-process mock model — plan → exec → result, WebSocket replay, stop-control, and an explicit **crash-resume test** asserting cached nodes never re-run), and shipped-example execution.
 - **CI** (`.github/workflows/ci.yml`): `test` on a 2×2 matrix (Ubuntu + Windows, Node 20 + 22), `lint`, and `security` (`npm audit --audit-level=high` + a secret-pattern scan). All green at handoff with **0 vulnerabilities**.
