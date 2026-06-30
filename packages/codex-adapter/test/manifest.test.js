@@ -19,6 +19,7 @@ test('.codex-plugin/plugin.json marketplace manifest is valid and in sync', () =
   assert.equal(manifest.name, legacy.name);
   assert.equal(manifest.license, legacy.license);
   assert.equal(manifest.skills, './skills/');
+  assert.equal(manifest.mcpServers, './.mcp.json');
   assert.ok(manifest.version, 'marketplace manifest must declare a version');
   assert.ok(manifest.interface && manifest.interface.displayName, 'interface.displayName required for marketplace listings');
 });

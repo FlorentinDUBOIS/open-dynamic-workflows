@@ -106,7 +106,7 @@ Or wire it directly into your agentic coder from the clone:
 
 ```bash
 odw-daemon integrate mcp          # writes .mcp.json + AGENTS.md instructions
-odw-daemon integrate codex        # MCP + Codex skill
+odw-daemon integrate codex        # Codex plugin + MCP + skill
 odw-daemon integrate cursor       # writes .cursor/mcp.json + Cursor rule + /odw skill
 odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json + /flow:odw skill
 odw-daemon integrate gemini       # writes ~/.gemini/settings.json + /odw + /ultracode
@@ -182,14 +182,14 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds Cursor MCP config, a project rule, and a project-local `.cursor/skills/odw` skill that can be invoked from Cursor Agent chat as `/odw`; `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json`, `AGENTS.md`, and a project-local `.kimi/skills/odw` flow skill invokable as `/flow:odw` or `/skill:odw`; `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json`, `GEMINI.md`, and project-local `.gemini/commands/odw.toml` plus `ultracode.toml` slash commands; `integrate zed` writes Zed `context_servers`, `AGENTS.md`, and a project-local `.agents/skills/odw` Agent Skill invokable with `/`; `integrate zcode` writes generic MCP plus the same Zed-style context-server config and skill; `integrate vscode` installs the local dashboard extension into `~/.vscode/extensions`; and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific installers sit beside it: `integrate codex` installs a local Codex plugin bundle under `~/.codex/plugins/odw`, registers it in the personal marketplace at `~/.agents/plugins/marketplace.json`, and keeps the fallback `~/.codex/config.toml` MCP block plus the `~/.agents/skills/odw` skill; `integrate cursor` adds Cursor MCP config, a project rule, and a project-local `.cursor/skills/odw` skill that can be invoked from Cursor Agent chat as `/odw`; `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json`, `AGENTS.md`, and a project-local `.kimi/skills/odw` flow skill invokable as `/flow:odw` or `/skill:odw`; `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json`, `GEMINI.md`, and project-local `.gemini/commands/odw.toml` plus `ultracode.toml` slash commands; `integrate zed` writes Zed `context_servers`, `AGENTS.md`, and a project-local `.agents/skills/odw` Agent Skill invokable with `/`; `integrate zcode` writes generic MCP plus the same Zed-style context-server config and skill; `integrate vscode` installs the local dashboard extension into `~/.vscode/extensions`; and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
 
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 
 For release and support checks, run `npm run smoke:hosts`. It creates a temporary full install, starts a temporary daemon, runs `odw-daemon doctor all`, and probes installed host CLIs. Missing proprietary hosts are reported as skipped instead of faking coverage.
 Use `npm run smoke:hosts -- --require-host opencode` when a release machine is expected to prove a specific host is runnable.
 
-The adapters are how your existing tool drives the engine. The easiest default is MCP: `odw-daemon integrate codex` and `odw-daemon integrate cursor` point the host at the local `odw-mcp` bridge, so the host gets `odw_plan`, `odw_run`, `odw_status`, `odw_result`, and `odw_control` tools without the compiled orchestration script entering chat context. Native adapters sit beside that where the host exposes better hooks. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API.
+The adapters are how your existing tool drives the engine. The easiest default is MCP: `odw-daemon integrate codex` and `odw-daemon integrate cursor` point the host at the local `odw-mcp` bridge, so the host gets `odw_plan`, `odw_run`, `odw_status`, `odw_result`, and `odw_control` tools without the compiled orchestration script entering chat context. Codex now also gets the official plugin packaging path, so the same skill and MCP server can be surfaced from Codex's plugin browser. Native adapters sit beside that where the host exposes better hooks. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API.
 
 | Editor / agent | How it connects | No-key, no-daemon native mode? |
 | --- | --- | --- |
@@ -197,14 +197,14 @@ The adapters are how your existing tool drives the engine. The easiest default i
 | **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json`, managed `AGENTS.md`, and `.kimi/skills/odw` so `/flow:odw` or `/skill:odw` opens the workflow playbook in Kimi | **No** - same MCP bridge |
 | **Gemini CLI** | `odw-daemon integrate gemini` writes `~/.gemini/settings.json` `mcpServers.odw`, managed `GEMINI.md`, and `.gemini/commands/odw.toml` + `ultracode.toml` so `/odw` and `/ultracode` route through ODW | **No** - same MCP bridge |
 | **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers`, managed `AGENTS.md`, and `.agents/skills/odw` so `/odw` opens the workflow playbook in Zed Agent; `integrate zcode` writes both generic `.mcp.json` and the same Zed-style settings/skill | **No** - same MCP bridge |
-| **Codex** | `odw-daemon integrate codex` installs both MCP (`~/.codex/config.toml`) and the `odw` skill (`~/.agents/skills/odw`) | **No** — Codex exposes MCP/tools and skills, but no extension API to invoke the host model; full ODW uses the daemon |
+| **Codex** | `odw-daemon integrate codex` installs an official local plugin bundle (`~/.codex/plugins/odw`), registers the personal marketplace entry (`~/.agents/plugins/marketplace.json`), writes plugin-scoped MCP (`~/.codex/plugins/odw/.mcp.json`), and keeps fallback MCP/skill installs (`~/.codex/config.toml`, `~/.agents/skills/odw`) | **No** — Codex exposes plugins, MCP/tools, and skills, but no documented extension API to invoke the host model directly; full ODW uses the daemon |
 | **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json`, a Cursor project rule, and `.cursor/skills/odw` so `/odw` opens the workflow playbook inside Cursor Agent chat; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
 | **OpenCode** | `odw-daemon integrate opencode` writes a local plugin wrapper and `/ultracode` + `/workflows` commands | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
 | **Antigravity** | `odw-daemon integrate antigravity` writes Antigravity MCP configs (`~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `.agents/mcp_config.json`) plus the `odw` skill and saved `/odw-run` workflow | **No** — Antigravity exposes MCP/tools, skills, and saved workflows, but no documented model API to invoke the host model; full ODW uses the daemon |
 | **OpenClaw** | `odw-daemon integrate openclaw` installs the ClawHub-format skill | **No** — the skill is a thin client over the daemon API |
 | **VS Code** | `odw-daemon integrate vscode` installs the local extension into `~/.vscode/extensions`; it adds a sidebar of live workflows, a dashboard webview, and a status bar that spins while agents run | n/a (UI client over the daemon API) |
 
-Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex, Cursor, Kimi/Gemini/Zed-style MCP clients, and similar hosts are best served by the MCP bridge today. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — MCP, skills, `AGENTS.md`, `GEMINI.md`, saved workflows — and say so out loud rather than pretend to be keyless.
+Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex now gets a proper local plugin package, but Codex, Cursor, Kimi/Gemini/Zed-style MCP clients, and similar hosts are still best served by the MCP bridge for execution. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — plugins, MCP, skills, `AGENTS.md`, `GEMINI.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 
 ---
 
@@ -289,7 +289,7 @@ Yes. It replicates the same script-as-orchestrator architecture — the model wr
 <details>
 <summary><b>Which AI coding agents does it work with?</b></summary>
 <br>
-OpenCode (plugin), Cursor (MCP + rule + Agent Skill), OpenAI Codex (skill + bridge), Gemini CLI (MCP + GEMINI.md), Kimi Code (MCP + AGENTS.md), Zed/zcode (MCP/context server + AGENTS.md), Google Antigravity (MCP + skill + saved workflow), VS Code (extension), and any shell via the <code>odw-daemon</code> CLI. The daemon is the engine; each adapter is a thin client over its local HTTP API.
+OpenCode (plugin), Cursor (MCP + rule + Agent Skill), OpenAI Codex (plugin + MCP + skill), Gemini CLI (MCP + GEMINI.md), Kimi Code (MCP + AGENTS.md), Zed/zcode (MCP/context server + AGENTS.md), Google Antigravity (MCP + skill + saved workflow), VS Code (extension), and any shell via the <code>odw-daemon</code> CLI. The daemon is the engine; each adapter is a thin client over its local HTTP API.
 </details>
 
 <details>
@@ -322,7 +322,7 @@ packages/
   core/                 planning, topology selection, script generation  (zero I/O, pure)
   daemon/               the engine — sandbox, queue, providers, sqlite, http/ws, cli
   opencode-plugin/      OpenCode plugin + custom tools + slash commands
-  codex-adapter/        Codex skill folder + daemon bridge
+  codex-adapter/        Codex plugin bundle, skill folder, and daemon bridge
   antigravity-adapter/  Antigravity MCP configs + skill + saved workflow
   gemini-adapter/       Gemini CLI custom /odw and /ultracode commands
   cursor-adapter/       Cursor Agent skill installed into .cursor/skills/odw

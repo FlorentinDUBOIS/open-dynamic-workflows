@@ -9,6 +9,7 @@
   "keywords": ["workflows", "orchestration", "multi-agent", "parallel", "ultracode", "planning"],
   "skills": "./skills/",
   "scripts": "./scripts/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Open Dynamic Workflows",
     "shortDescription": "Plan, orchestrate, and verify parallel AI coding agents.",

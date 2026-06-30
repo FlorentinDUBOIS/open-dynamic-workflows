@@ -11,6 +11,7 @@ import {
   installAgentIntegration,
   installAntigravity,
   installCodexMcp,
+  installCodexPlugin,
   installCursorMcp,
   installGeminiMcp,
   installGenericMcpConfig,
@@ -204,6 +205,45 @@ test('installCodexMcp preserves existing config and replaces the managed odw blo
     assert.equal((text.match(/\[mcp_servers\.odw\]/g) ?? []).length, 1);
     assert.match(text, /command = "node"/);
     assert.match(text, /mcp-server\/src\/index\.js/);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('installCodexPlugin installs a Codex plugin bundle and personal marketplace entry', () => {
+  const home = tempDir('odw-codex-plugin-');
+  try {
+    mkdirSync(join(home, '.agents', 'plugins'), { recursive: true });
+    writeFileSync(join(home, '.agents', 'plugins', 'marketplace.json'), JSON.stringify({
+      plugins: [
+        { name: 'keep-me', source: { type: 'local', path: './keep-me' } },
+      ],
+    }));
+
+    const result = installCodexPlugin({ home, repoRoot });
+    installCodexPlugin({ home, repoRoot });
+
+    const pluginDir = join(home, '.codex', 'plugins', 'odw');
+    assert.equal(result.kind, 'codex-plugin');
+    assert.equal(result.path, pluginDir);
+    assert.ok(existsSync(join(pluginDir, '.codex-plugin', 'plugin.json')));
+    assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'SKILL.md')));
+    assert.ok(existsSync(join(pluginDir, 'scripts', 'daemon-bridge.js')));
+    assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+
+    const manifest = JSON.parse(readFileSync(join(pluginDir, '.codex-plugin', 'plugin.json'), 'utf8'));
+    assert.equal(manifest.mcpServers, './.mcp.json');
+
+    const pluginMcp = JSON.parse(readFileSync(join(pluginDir, '.mcp.json'), 'utf8'));
+    assert.equal(pluginMcp.mcpServers.odw.command, 'node');
+    assert.ok(pluginMcp.mcpServers.odw.args[0].includes('mcp-server'));
+
+    const marketplace = JSON.parse(readFileSync(join(home, '.agents', 'plugins', 'marketplace.json'), 'utf8'));
+    assert.deepEqual(marketplace.plugins.map((plugin) => plugin.name).sort(), ['keep-me', 'odw']);
+    assert.deepEqual(marketplace.plugins.find((plugin) => plugin.name === 'odw'), {
+      name: 'odw',
+      source: { type: 'local', path: './.codex/plugins/odw' },
+    });
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

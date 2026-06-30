@@ -92,6 +92,22 @@ export function installCodexSkill({ home = homedir(), repoRoot = DEFAULT_REPO_RO
   return { kind: 'codex-skill', path: dest };
 }
 
+export function installCodexPlugin({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = codexPluginPath({ home, repoRoot });
+  ensureDir(dest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', '.codex-plugin'), join(dest, '.codex-plugin'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'skills'), join(dest, 'skills'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'odw', 'scripts'));
+  cpSync(join(repoRoot, 'packages', 'codex-adapter', 'AGENTS.md'), join(dest, 'AGENTS.md'));
+  cpSync(join(repoRoot, 'packages', 'codex-adapter', 'README.md'), join(dest, 'README.md'));
+  cpSync(join(repoRoot, 'packages', 'codex-adapter', 'plugin.json'), join(dest, 'plugin.json'));
+  const mcpPath = join(dest, '.mcp.json');
+  writeJson(mcpPath, { mcpServers: { odw: mcpServerCommand({ repoRoot }) } });
+  const marketplacePath = installCodexMarketplace({ home });
+  return { kind: 'codex-plugin', path: dest, marketplacePath, mcpPath };
+}
+
 export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.cursor', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest);
@@ -187,9 +203,11 @@ export function installAgentIntegration(kind, options = {}) {
     case 'generic-mcp':
       return installGenericMcpConfig(options);
     case 'codex':
-      return { kind, steps: [installCodexMcp(options), installCodexSkill(options)] };
+      return { kind, steps: [installCodexMcp(options), installCodexPlugin(options), installCodexSkill(options)] };
     case 'codex-mcp':
       return installCodexMcp(options);
+    case 'codex-plugin':
+      return installCodexPlugin(options);
     case 'codex-skill':
       return installCodexSkill(options);
     case 'cursor':
@@ -219,6 +237,7 @@ export function installAgentIntegration(kind, options = {}) {
         steps: [
           installGenericMcpConfig(options),
           installCodexMcp(options),
+          installCodexPlugin(options),
           installCodexSkill(options),
           installCursorMcp(options),
           installKimiMcp(options),
@@ -231,7 +250,7 @@ export function installAgentIntegration(kind, options = {}) {
         ],
       };
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-plugin, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
   }
 }
 
@@ -253,12 +272,24 @@ function doctorChecksFor(kind, options = {}) {
         checkAgentInstructions('generic agent instructions', options.targetDir ?? process.cwd()),
       ];
     case 'codex':
-      return [...doctorChecksFor('codex-mcp', options), ...doctorChecksFor('codex-skill', options)];
+      return [...doctorChecksFor('codex-mcp', options), ...doctorChecksFor('codex-plugin', options), ...doctorChecksFor('codex-skill', options)];
     case 'codex-mcp':
       return [checkText('codex mcp config', join(options.home ?? homedir(), '.codex', 'config.toml'), [
         '[mcp_servers.odw]',
         mcpServerCommand(options).args[0],
       ])];
+    case 'codex-plugin':
+      return [
+        checkText('codex plugin manifest', join(codexPluginPath(options), '.codex-plugin', 'plugin.json'), [
+          '"name": "odw"',
+          '"mcpServers": "./.mcp.json"',
+        ]),
+        checkMcpJson('codex plugin mcp config', join(codexPluginPath(options), '.mcp.json'), 'mcpServers', options),
+        checkExists('codex plugin skill', join(codexPluginPath(options), 'skills', 'odw', 'SKILL.md')),
+        checkExists('codex plugin daemon bridge', join(codexPluginPath(options), 'scripts', 'daemon-bridge.js')),
+        checkExists('codex plugin skill bridge', join(codexPluginPath(options), 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkCodexMarketplace('codex personal marketplace', codexMarketplacePath(options)),
+      ];
     case 'codex-skill':
       return [
         checkExists('codex skill', join(options.home ?? homedir(), '.agents', 'skills', 'odw', 'SKILL.md')),
@@ -353,7 +384,7 @@ function doctorChecksFor(kind, options = {}) {
         ...doctorChecksFor('openclaw', options),
       ];
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-plugin, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
   }
 }
 
@@ -472,8 +503,40 @@ function checkExists(label, path) {
   return check(existsSync(path), label, path, existsSync(path) ? 'ready' : 'missing');
 }
 
+function checkCodexMarketplace(label, path) {
+  if (!existsSync(path)) return check(false, label, path, 'missing');
+  let json;
+  try {
+    json = JSON.parse(readText(path, '{}'));
+  } catch (error) {
+    return check(false, label, path, `invalid JSON: ${error.message}`);
+  }
+  const entry = Array.isArray(json.plugins)
+    ? json.plugins.find((plugin) => plugin?.name === 'odw')
+    : null;
+  if (!entry) return check(false, label, path, 'missing odw plugin entry');
+  if (entry.source?.type !== 'local') return check(false, label, path, 'expected local source');
+  if (entry.source?.path !== './.codex/plugins/odw') return check(false, label, path, 'expected path ./.codex/plugins/odw');
+  return check(true, label, path, 'ready');
+}
+
 function check(ok, label, path, message) {
   return { ok, label, path, message };
+}
+
+function installCodexMarketplace({ home = homedir() } = {}) {
+  const path = codexMarketplacePath({ home });
+  const current = readJson(path, {});
+  const plugins = Array.isArray(current.plugins)
+    ? current.plugins.filter((plugin) => plugin?.name !== 'odw')
+    : [];
+  plugins.push({
+    name: 'odw',
+    source: { type: 'local', path: './.codex/plugins/odw' },
+  });
+  current.plugins = plugins;
+  writeJson(path, current);
+  return path;
 }
 
 function writeMcpServersJson(path, repoRoot) {
@@ -482,6 +545,14 @@ function writeMcpServersJson(path, repoRoot) {
   current.mcpServers.odw = mcpServerCommand({ repoRoot });
   writeJson(path, current);
   return current;
+}
+
+function codexPluginPath(options = {}) {
+  return join(options.home ?? homedir(), '.codex', 'plugins', 'odw');
+}
+
+function codexMarketplacePath(options = {}) {
+  return join(options.home ?? homedir(), '.agents', 'plugins', 'marketplace.json');
 }
 
 function vscodeExtensionPath(options = {}) {
