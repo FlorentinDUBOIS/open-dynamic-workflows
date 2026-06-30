@@ -85,6 +85,7 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
       `role: ${JSON.stringify(task.role)}`,
       `prompt: ${promptExpr}`,
       `schema: ${schema}`,
+      role?.allowedTools?.length ? `tools: ${JSON.stringify(role.allowedTools)}` : null,
       role?.model ? `model: ${JSON.stringify(role.model)}` : null,
       `maxTokens: ${role?.maxTokens ?? 4000}`,
       `timeout: ${strategy.timeouts.perAgent}`,
@@ -131,9 +132,9 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
       const v = sanitizeKey(task.id);
       lines.push(`  {`);
       lines.push(`    const ${v}_critics = [`);
-      lines.push(`      { role: 'false-positive-hunter', prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
-      lines.push(`      { role: 'severity-validator', prompt: 'Challenge the severity ratings of these findings.' },`);
-      lines.push(`      { role: 'completeness-checker', prompt: 'What is MISSING from these findings?' },`);
+      lines.push(`      { role: 'false-positive-hunter', tools: ['read_file'], prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
+      lines.push(`      { role: 'severity-validator', tools: ['read_file'], prompt: 'Challenge the severity ratings of these findings.' },`);
+      lines.push(`      { role: 'completeness-checker', tools: ['read_file', 'search'], prompt: 'What is MISSING from these findings?' },`);
       lines.push(`    ];`);
       lines.push(`    const ${v}_criticSlots = __odw_takeAgentSlots(${v}_critics.length, ${JSON.stringify(`${phaseName} critics`)}, ${serialReserveAfter});`);
       lines.push(`    const ${v}_activeCritics = ${v}_critics.slice(0, ${v}_criticSlots);`);
@@ -150,9 +151,9 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
       lines.push(`    target: results[${JSON.stringify(upstream)}],`);
       lines.push(`    mode: 'adversarial',`);
       lines.push(`    critics: [`);
-      lines.push(`      { role: 'false-positive-hunter', prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
-      lines.push(`      { role: 'severity-validator', prompt: 'Challenge the severity ratings of these findings.' },`);
-      lines.push(`      { role: 'completeness-checker', prompt: 'What is MISSING from these findings?' },`);
+      lines.push(`      { role: 'false-positive-hunter', tools: ['read_file'], prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
+      lines.push(`      { role: 'severity-validator', tools: ['read_file'], prompt: 'Challenge the severity ratings of these findings.' },`);
+      lines.push(`      { role: 'completeness-checker', tools: ['read_file', 'search'], prompt: 'What is MISSING from these findings?' },`);
       lines.push(`    ],`);
       lines.push(`    consensusThreshold: 2,`);
       lines.push(`    minConfidence: 0.8,`);

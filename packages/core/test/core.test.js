@@ -169,6 +169,9 @@ test('script-generator: output is valid JS with the documented shape', () => {
   assert.match(src, /verify\(\{/);
   assert.match(src, /checkpoint\(/);
   assert.match(src, /maxConcurrency: 16/);
+  assert.match(src, /tools: \["read_file","search","glob"\]/, 'discovery agents should receive filesystem discovery tools');
+  assert.match(src, /tools: \["read_file","search"\]/, 'analysis agents should receive read/search tools');
+  assert.match(src, /role: 'completeness-checker', tools: \['read_file', 'search'\]/, 'verification critics should receive their tools');
   // fan-out must be per-item resilient: each agent catches its own failure and
   // failed items are filtered out rather than rejecting the whole batch
   assert.match(src, /__odw_failed/);

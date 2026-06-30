@@ -175,6 +175,7 @@ function verify(config) {
             required: ["approved", "confidence"]
           },
           model: critic.model,
+          tools: critic.tools,
           maxTokens: critic.maxTokens || 4000
         }).catch(function (e) {
           return { approved: false, confidence: 0, critique: "critic failed: " + e.message, rejectedItems: [] };
