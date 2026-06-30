@@ -270,6 +270,7 @@ export function installOpencodePlugin({ targetDir = process.cwd(), repoRoot = DE
 
   const commandsDest = join(targetDir, '.opencode', 'commands');
   ensureDir(commandsDest);
+  cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'odw.md'), join(commandsDest, 'odw.md'));
   cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'ultracode.md'), join(commandsDest, 'ultracode.md'));
   cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'workflows.md'), join(commandsDest, 'workflows.md'));
   return { kind: 'opencode', pluginPath, commandsPath: commandsDest };
@@ -503,6 +504,9 @@ function doctorChecksFor(kind, options = {}) {
     case 'opencode':
       return [
         checkExists('opencode plugin wrapper', join(options.targetDir ?? process.cwd(), '.opencode', 'plugins', 'odw.mjs')),
+        checkText('opencode odw command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'odw.md'), [
+          'workflow: $ARGUMENTS',
+        ]),
         checkExists('opencode ultracode command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'ultracode.md')),
         checkExists('opencode workflows command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'workflows.md')),
       ];
