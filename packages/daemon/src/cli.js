@@ -349,6 +349,7 @@ program
   .option('--target <dir>', 'project directory for project-local configs', process.cwd())
   .option('--home <dir>', 'home directory for user-level configs', homedir())
   .option('--repo <dir>', 'open-dynamic-workflows checkout to point adapters at')
+  .option('--json', 'print machine-readable JSON')
   .action(async (agent, opts) => {
     const { installAgentIntegration } = await import('./integrations.js');
     const result = installAgentIntegration(agent, {
@@ -356,6 +357,10 @@ program
       home: resolve(opts.home),
       ...(opts.repo ? { repoRoot: resolve(opts.repo) } : {}),
     });
+    if (opts.json) {
+      printJson({ ok: true, agent, result });
+      return;
+    }
     console.log(`${color.ok('ok')} installed ${agent} integration`);
     for (const line of integrationLines(result)) console.log(`  ${line}`);
     console.log('');
@@ -372,6 +377,7 @@ program
   .option('--home <dir>', 'home directory for user-level configs', homedir())
   .option('--repo <dir>', 'open-dynamic-workflows checkout integrations should point at')
   .option('--port <port>', 'daemon port to probe')
+  .option('--json', 'print machine-readable JSON')
   .action(async (agent, opts) => {
     const { doctorAgentIntegration } = await import('./integrations.js');
     const report = doctorAgentIntegration(agent, {
@@ -380,15 +386,26 @@ program
       ...(opts.repo ? { repoRoot: resolve(opts.repo) } : {}),
     });
 
+    const config = loadConfig();
+    const port = Number(opts.port ?? config.daemon.port ?? DEFAULT_PORT);
+    const health = await healthcheck(port);
+    const daemon = health
+      ? { ok: true, port, ...health }
+      : { ok: false, port };
+    const ok = report.ok && daemon.ok;
+
+    if (opts.json) {
+      printJson({ ok, agent, integration: report, daemon });
+      if (!ok) process.exitCode = 1;
+      return;
+    }
+
     console.log(`${report.ok ? color.ok('[ok]') : color.err('[x]')} ${agent} integration ${report.ok ? 'ready' : 'needs attention'}`);
     for (const item of report.checks) {
       console.log(`  ${item.ok ? color.ok('[ok]') : color.err('[x]')} ${item.label.padEnd(30)} ${item.message}`);
       console.log(`       ${color.dim(item.path)}`);
     }
 
-    const config = loadConfig();
-    const port = Number(opts.port ?? config.daemon.port ?? DEFAULT_PORT);
-    const health = await healthcheck(port);
     if (health) {
       console.log(`${color.ok('[ok]')} daemon running on 127.0.0.1:${port}`);
     } else {
@@ -429,4 +446,8 @@ function integrationLines(result) {
   return Object.entries(result)
     .filter(([key]) => key !== 'kind' && key !== 'server')
     .map(([key, value]) => `${String(key).padEnd(12)} ${value}`);
+}
+
+function printJson(value) {
+  console.log(JSON.stringify(value, null, 2));
 }

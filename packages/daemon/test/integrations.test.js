@@ -478,6 +478,39 @@ test('cli integrate command installs a requested agent integration', () => {
   }
 });
 
+test('cli integrate command can print machine-readable JSON', () => {
+  const targetDir = tempDir('odw-cli-json-target-');
+  const home = tempDir('odw-cli-json-home-');
+  try {
+    const output = execFileSync(
+      process.execPath,
+      [
+        join(repoRoot, 'packages', 'daemon', 'src', 'cli.js'),
+        'integrate',
+        'cursor',
+        '--target',
+        targetDir,
+        '--home',
+        home,
+        '--repo',
+        repoRoot,
+        '--json',
+      ],
+      { encoding: 'utf8', env: { ...process.env, ODW_HOME: home } }
+    );
+    const report = JSON.parse(output);
+    assert.equal(report.ok, true);
+    assert.equal(report.agent, 'cursor');
+    assert.equal(report.result.kind, 'cursor');
+    assert.ok(report.result.path.endsWith(join('.cursor', 'mcp.json')));
+    assert.ok(report.result.ultracodeSkillPath.endsWith(join('.cursor', 'skills', 'ultracode')));
+    assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'ultracode', 'SKILL.md')));
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('doctorAgentIntegration reports missing integration files without throwing', () => {
   const targetDir = tempDir('odw-doctor-missing-target-');
   const home = tempDir('odw-doctor-missing-home-');
@@ -495,6 +528,49 @@ test('doctorAgentIntegration reports missing integration files without throwing'
     assert.equal(result.checks[3].label, 'kimi daemon bridge');
     assert.equal(result.checks[4].label, 'kimi ultracode flow skill');
     assert.equal(result.checks[5].label, 'kimi ultracode daemon bridge');
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('cli doctor command can print machine-readable JSON', () => {
+  const targetDir = tempDir('odw-cli-doctor-json-target-');
+  const home = tempDir('odw-cli-doctor-json-home-');
+  try {
+    assert.throws(
+      () => execFileSync(
+        process.execPath,
+        [
+          join(repoRoot, 'packages', 'daemon', 'src', 'cli.js'),
+          'doctor',
+          'mcp',
+          '--target',
+          targetDir,
+          '--home',
+          home,
+          '--repo',
+          repoRoot,
+          '--port',
+          '59998',
+          '--json',
+        ],
+        { encoding: 'utf8', env: { ...process.env, ODW_HOME: home, ODW_DAEMON_PORT: '59998' } }
+      ),
+      (error) => {
+        assert.equal(error.status, 1);
+        const report = JSON.parse(error.stdout);
+        assert.equal(report.ok, false);
+        assert.equal(report.agent, 'mcp');
+        assert.equal(report.integration.kind, 'mcp');
+        assert.equal(report.integration.ok, false);
+        assert.equal(report.daemon.ok, false);
+        assert.equal(report.daemon.port, 59998);
+        assert.ok(report.integration.checks.some((check) => check.label === 'generic mcp config' && check.ok === false));
+        assert.equal(error.stdout.includes('\u001b['), false);
+        return true;
+      }
+    );
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
