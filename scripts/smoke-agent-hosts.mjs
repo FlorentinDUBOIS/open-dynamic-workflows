@@ -38,6 +38,8 @@ try {
     join(targetDir, 'AGENTS.md'),
     join(targetDir, '.cursor', 'mcp.json'),
     join(targetDir, '.cursor', 'rules', 'open-dynamic-workflows.mdc'),
+    join(targetDir, '.cursor', 'skills', 'odw', 'SKILL.md'),
+    join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
     join(targetDir, '.zed', 'settings.json'),
     join(targetDir, '.opencode', 'plugins', 'odw.mjs'),
     join(targetDir, '.opencode', 'commands', 'ultracode.md'),

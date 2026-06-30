@@ -28,6 +28,7 @@ test('smoke-agent-hosts validates temp integrations and daemon readiness as JSON
   assert.deepEqual(report.hosts, []);
   assert.ok(report.generatedFiles.some((path) => path.endsWith('AGENTS.md')));
   assert.ok(report.generatedFiles.some((path) => path.includes('.cursor') && path.endsWith('open-dynamic-workflows.mdc')));
+  assert.ok(report.generatedFiles.some((path) => path.includes('.cursor') && path.endsWith(join('skills', 'odw', 'SKILL.md'))));
 });
 
 test('smoke-agent-hosts can require specific host evidence', () => {

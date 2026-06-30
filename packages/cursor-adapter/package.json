@@ -1,0 +1,11 @@
+{
+  "name": "odw-cursor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cursor Agent skill for Open Dynamic Workflows.",
+  "type": "commonjs",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/*.js\""
+  }
+}

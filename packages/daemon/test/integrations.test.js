@@ -49,6 +49,12 @@ test('installCursorMcp writes an idempotent .cursor/mcp.json with an odw server'
     assert.match(rule, /alwaysApply: true/);
     assert.match(rule, /odw_run/);
     assert.match(rule, /ultracode/);
+
+    const skill = readFileSync(join(targetDir, '.cursor', 'skills', 'odw', 'SKILL.md'), 'utf8');
+    assert.match(skill, /^---\r?\nname: odw\r?\n/);
+    assert.match(skill, /Cursor Agent/);
+    assert.match(skill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -344,6 +350,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
+    assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity workspace mcp config'));

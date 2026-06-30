@@ -32,7 +32,8 @@ export function installCursorMcp({ targetDir = process.cwd(), repoRoot = DEFAULT
   const path = join(targetDir, '.cursor', 'mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
   const rulePath = installCursorRule({ targetDir });
-  return { kind: 'cursor', path, rulePath, server: current.mcpServers.odw };
+  const skillPath = installCursorSkill({ targetDir, repoRoot });
+  return { kind: 'cursor', path, rulePath, skillPath, server: current.mcpServers.odw };
 }
 
 export function installGenericMcpConfig({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -86,6 +87,13 @@ export function installCodexSkill({ home = homedir(), repoRoot = DEFAULT_REPO_RO
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'skills', 'odw'), dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   return { kind: 'codex-skill', path: dest };
+}
+
+export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.cursor', 'skills', 'odw');
+  copyFresh(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  return dest;
 }
 
 export function installAntigravity({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -239,6 +247,8 @@ function doctorChecksFor(kind, options = {}) {
           'odw_run',
           'ultracode',
         ]),
+        checkExists('cursor agent skill', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'SKILL.md')),
+        checkExists('cursor daemon bridge', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
       ];
     case 'kimi':
     case 'kimi-code':
