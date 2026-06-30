@@ -224,6 +224,41 @@ test('installZedMcp writes project Zed context server settings', () => {
   }
 });
 
+test('installAgentIntegration zcode writes zcode-specific project guidance over Zed-compatible settings', () => {
+  const targetDir = tempDir('odw-zcode-');
+  try {
+    const result = installAgentIntegration('zcode', { targetDir, repoRoot });
+    installAgentIntegration('zcode', { targetDir, repoRoot });
+
+    assert.equal(result.kind, 'zcode');
+    assert.ok(existsSync(join(targetDir, '.mcp.json')));
+    assert.ok(existsSync(join(targetDir, '.zed', 'settings.json')));
+
+    const agents = readFileSync(join(targetDir, 'AGENTS.md'), 'utf8');
+    assert.match(agents, /For zcode/);
+    assert.match(agents, /odw_run/);
+    assert.match(agents, /ultracode/);
+
+    const skill = readFileSync(join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'), 'utf8');
+    assert.match(skill, /zcode/);
+    assert.doesNotMatch(skill, /doctor zed/);
+
+    const ultracodeSkill = readFileSync(join(targetDir, '.agents', 'skills', 'ultracode', 'SKILL.md'), 'utf8');
+    assert.match(ultracodeSkill, /zcode/);
+    assert.doesNotMatch(ultracodeSkill, /doctor zed/);
+
+    const doctor = doctorAgentIntegration('zcode', { targetDir, repoRoot });
+    assert.equal(doctor.kind, 'zcode');
+    assert.equal(doctor.ok, true);
+    assert.ok(doctor.checks.some((check) => check.label === 'zcode generic mcp config'));
+    assert.ok(doctor.checks.some((check) => check.label === 'zcode context server config'));
+    assert.ok(doctor.checks.some((check) => check.label === 'zcode agent instructions'));
+    assert.ok(doctor.checks.some((check) => check.label === 'zcode ultracode agent skill'));
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+  }
+});
+
 test('installCodexMcp preserves existing config and replaces the managed odw block', () => {
   const home = tempDir('odw-codex-');
   try {

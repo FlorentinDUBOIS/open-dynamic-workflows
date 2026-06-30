@@ -63,16 +63,39 @@ export function installGeminiMcp({ home = homedir(), targetDir = process.cwd(), 
   return { kind: 'gemini', path, instructionsPath, commandsPath, server: current.mcpServers.odw };
 }
 
-export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installZedMcp({
+  targetDir = process.cwd(),
+  repoRoot = DEFAULT_REPO_ROOT,
+  host = 'Zed',
+  skillHost = 'Zed Agent',
+  doctorAgent = 'zed',
+  kind = 'zed',
+} = {}) {
   const path = join(targetDir, '.zed', 'settings.json');
   const current = readJson(path, { context_servers: {} });
   current.context_servers = objectOrEmpty(current.context_servers);
   current.context_servers.odw = mcpServerCommand({ repoRoot });
   writeJson(path, current);
-  const instructionsPath = installAgentInstructions({ targetDir, host: 'Zed' });
-  const skillPath = installZedSkill({ targetDir, repoRoot });
-  const ultracodeSkillPath = installZedUltracodeSkill({ targetDir, repoRoot });
-  return { kind: 'zed', path, instructionsPath, skillPath, ultracodeSkillPath, server: current.context_servers.odw };
+  const instructionsPath = installAgentInstructions({ targetDir, host });
+  const skillPath = installZedSkill({ targetDir, repoRoot, host: skillHost, doctorAgent });
+  const ultracodeSkillPath = installZedUltracodeSkill({ targetDir, repoRoot, host: skillHost, doctorAgent });
+  return { kind, path, instructionsPath, skillPath, ultracodeSkillPath, server: current.context_servers.odw };
+}
+
+export function installZcodeMcp(options = {}) {
+  return {
+    kind: 'zcode',
+    steps: [
+      installGenericMcpConfig(options),
+      installZedMcp({
+        ...options,
+        host: 'zcode',
+        skillHost: 'zcode',
+        doctorAgent: 'zcode',
+        kind: 'zcode-context',
+      }),
+    ],
+  };
 }
 
 export function installCodexMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -142,14 +165,28 @@ export function installKimiUltracodeSkill({ targetDir = process.cwd(), repoRoot 
   return copySkillWithBridge(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'ultracode'), dest, repoRoot);
 }
 
-export function installZedSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installZedSkill({
+  targetDir = process.cwd(),
+  repoRoot = DEFAULT_REPO_ROOT,
+  host = 'Zed Agent',
+  doctorAgent = 'zed',
+} = {}) {
   const dest = join(targetDir, '.agents', 'skills', 'odw');
-  return copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest, repoRoot);
+  copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest, repoRoot);
+  retargetZedSkill(dest, { host, doctorAgent });
+  return dest;
 }
 
-export function installZedUltracodeSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installZedUltracodeSkill({
+  targetDir = process.cwd(),
+  repoRoot = DEFAULT_REPO_ROOT,
+  host = 'Zed Agent',
+  doctorAgent = 'zed',
+} = {}) {
   const dest = join(targetDir, '.agents', 'skills', 'ultracode');
-  return copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'ultracode'), dest, repoRoot);
+  copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'ultracode'), dest, repoRoot);
+  retargetZedSkill(dest, { host, doctorAgent });
+  return dest;
 }
 
 export function installGeminiCommands({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -267,7 +304,7 @@ export function installAgentIntegration(kind, options = {}) {
     case 'zed':
       return installZedMcp(options);
     case 'zcode':
-      return { kind, steps: [installGenericMcpConfig(options), installZedMcp(options)] };
+      return installZcodeMcp(options);
     case 'opencode':
       return installOpencodePlugin(options);
     case 'vscode':
@@ -427,7 +464,28 @@ function doctorChecksFor(kind, options = {}) {
         checkExists('zed ultracode daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
       ];
     case 'zcode':
-      return [...doctorChecksFor('mcp', options), ...doctorChecksFor('zed', options)];
+      return [
+        checkMcpJson('zcode generic mcp config', join(options.targetDir ?? process.cwd(), '.mcp.json'), 'mcpServers', options),
+        checkMcpJson('zcode context server config', join(options.targetDir ?? process.cwd(), '.zed', 'settings.json'), 'context_servers', options),
+        checkText('zcode agent instructions', join(options.targetDir ?? process.cwd(), 'AGENTS.md'), [
+          AGENTS_BEGIN,
+          'zcode',
+          'odw_run',
+          'ultracode',
+        ]),
+        checkText('zcode agent skill', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'odw', 'SKILL.md'), [
+          'zcode',
+          'odw_run',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('zcode daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('zcode ultracode agent skill', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'ultracode', 'SKILL.md'), [
+          'zcode',
+          'odw_run',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('zcode ultracode daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
+      ];
     case 'opencode':
       return [
         checkExists('opencode plugin wrapper', join(options.targetDir ?? process.cwd(), '.opencode', 'plugins', 'odw.mjs')),
@@ -669,6 +727,18 @@ function copySkillWithBridge(src, dest, repoRoot) {
   copyFresh(src, dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   return dest;
+}
+
+function retargetZedSkill(dest, { host, doctorAgent }) {
+  const path = join(dest, 'SKILL.md');
+  const fallbackLower = host === 'Zed Agent' ? 'Zed-native fallback' : `${host}-native fallback`;
+  const fallbackTitle = host === 'Zed Agent' ? 'Zed-Native Fallback' : `${host} Native Fallback`;
+  const text = readText(path, '')
+    .replaceAll('Zed Agent', host)
+    .replaceAll('Zed-native fallback', fallbackLower)
+    .replaceAll('Zed-Native Fallback', fallbackTitle)
+    .replaceAll('doctor zed', `doctor ${doctorAgent}`);
+  writeText(path, text);
 }
 
 function writeMcpServersJson(path, repoRoot) {
