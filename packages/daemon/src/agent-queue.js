@@ -58,6 +58,7 @@ export function createAgentQueue(options) {
   const backoff = options.retry?.backoff ?? 'exponential';
   const perAgentTimeoutMs = (options.perAgentTimeout ?? 120) * 1000;
   const log = options.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
+  let highWaterPending = 0;
 
   /**
    * @param {{model: string, systemPrompt?: string, prompt: string, schema?: object,
@@ -74,6 +75,7 @@ export function createAgentQueue(options) {
     const ctx = { ...DEFAULT_CONTEXT, ...(job.context ?? {}) };
     return queue.add(
       async () => {
+        highWaterPending = Math.max(highWaterPending, queue.pending);
         const started = Date.now();
         let lastError;
         // Correction hint fed back into the NEXT attempt when the model returned
@@ -460,6 +462,7 @@ export function createAgentQueue(options) {
     executeAgent,
     size: () => queue.size,
     pending: () => queue.pending,
+    highWaterPending: () => highWaterPending,
     clear: () => queue.clear(),
     onIdle: () => queue.onIdle(),
   };

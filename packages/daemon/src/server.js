@@ -89,6 +89,7 @@ export function createServer(deps) {
       activeWorkflows: stats.activeWorkflows,
       activeAgents: stats.queuePending,
       queuedAgents: stats.queueSize,
+      maxActiveAgentsObserved: stats.queueHighWaterPending,
       maxConcurrency: stats.maxConcurrency,
     });
   });
@@ -99,11 +100,23 @@ export function createServer(deps) {
     res.json(deps.checkModel ? deps.checkModel() : { ok: true });
   }));
 
+  const ensureModelReady = (options) => {
+    const readiness = deps.checkModel?.(options);
+    if (readiness && !readiness.ok) {
+      throw Object.assign(new Error(`model configuration is not ready: ${readiness.reason}`), {
+        status: 400,
+        code: 'provider_not_ready',
+      });
+    }
+    return readiness;
+  };
+
   app.post('/workflows/plan', mutationLimiter, asyncRoute(async (req, res) => {
     const { prompt, options } = req.body ?? {};
     if (!prompt || typeof prompt !== 'string') {
       throw Object.assign(new Error('body.prompt (string) is required'), { status: 400, code: 'bad_request' });
     }
+    ensureModelReady({ includePlanning: options?.useLlmPlanner === true });
     const plan = await planner(prompt, options ?? {});
     // Annotate whether the plan includes an adversarial verification node, so
     // the absence of the safety net is never silent.
@@ -116,6 +129,7 @@ export function createServer(deps) {
     if (!plan?.script) {
       throw Object.assign(new Error('body.plan with a compiled script is required'), { status: 400, code: 'bad_request' });
     }
+    if (planNeedsModelProvider(plan)) ensureModelReady({ plan });
     // roles must travel with the run (embedded.js does the same) — dropping
     // them silently strips role system prompts from daemon-run workflows.
     const workflowId = await runtime.execWorkflow(plan, strategy, { cwd, args, roles: plan.roles });
@@ -270,4 +284,11 @@ function safeMessage(error) {
     .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
     .replace(/Bearer\s+\S+/g, '[REDACTED]')
     .slice(0, 500);
+}
+
+function planNeedsModelProvider(plan) {
+  if ((plan.estimate?.totalAgents ?? 0) > 0) return true;
+  if ((plan.roles?.length ?? 0) > 0) return true;
+  if (plan.strategy?.budget?.model) return true;
+  return /\b(agent|verify|replan)\s*\(/.test(String(plan.script ?? ''));
 }

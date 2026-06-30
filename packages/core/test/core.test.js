@@ -249,6 +249,28 @@ test('createPlan: full plan artifact from a single prompt', async () => {
   assert.ok(plan.taskGraph.root.estimatedCostUSD > 0);
 });
 
+test('createPlan: maxAgents is a hard runtime cap, not just an estimate hint', async () => {
+  const plan = await createPlan('workflow: audit every file in src for security bugs', {
+    maxAgents: 20,
+    strategy: { concurrency: { max: 20 } },
+  });
+  assert.equal(plan.estimate.totalAgents, 20);
+  assert.equal(plan.taskGraph.root.agentCap.maxAgents, 20);
+  assert.equal(plan.taskGraph.root.agentCap.capped, true);
+  assert.match(plan.script, /const __odw_agentCap = 20/);
+  assert.match(plan.script, /__odw_takeAgentSlots\(work_items_all\.length, "Work", 4\)/);
+  assert.match(plan.script, /work_items_all\.slice\(0, work_slots\)/);
+  assert.match(plan.script, /__odw_takeAgentSlots\(verify_critics\.length, "Verify critics", 1\)/);
+  new Function(plan.script);
+});
+
+test('createPlan: maxAgents rejects caps below required serial phases', async () => {
+  await assert.rejects(
+    () => createPlan('workflow: audit every file in src for security bugs', { maxAgents: 4 }),
+    /minimum is 5/
+  );
+});
+
 test('createPlan: llmDecompose failure falls back to heuristic', async () => {
   const plan = await createPlan('audit everything', {
     llmDecompose: async () => { throw new Error('planner model down'); },

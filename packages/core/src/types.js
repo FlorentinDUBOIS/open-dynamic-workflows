@@ -28,7 +28,8 @@
  * @typedef {object} TaskGraph
  * @property {{id: "root", prompt: string, complexity: Complexity,
  *            estimatedTotalAgents: number, estimatedCostUSD: number,
- *            estimatedDurationMinutes: number}} root
+ *            estimatedDurationMinutes: number,
+ *            agentCap?: {maxAgents: number, serialAgents: number, capped: boolean}}} root
  * @property {TaskNode[]} tasks
  */
 

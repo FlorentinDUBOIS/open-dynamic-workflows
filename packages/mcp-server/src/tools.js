@@ -39,6 +39,7 @@ export const TOOL_DEFINITIONS = [
         prompt: { type: 'string', description: 'what the workflow should accomplish (mutually exclusive with planId)' },
         planId: { type: 'string', description: 'a plan_... id previously returned by odw_plan (mutually exclusive with prompt)' },
         cwd: { type: 'string', description: 'working directory for the workflow (default: the MCP server cwd)' },
+        maxAgents: { type: 'number', description: 'optional cap on total agents when planning from prompt' },
         wait: { type: 'boolean', description: 'true: block and return the final result; false (default): return the workflowId immediately' },
       },
     },
@@ -128,7 +129,9 @@ export function createToolHandlers(client, options = {}) {
       const health = await client.health();
       return text(
         `daemon ${health.status} on ${client.base} — ${health.activeWorkflows ?? 0} active workflow(s), ` +
-          `${health.activeAgents ?? 0} active / ${health.queuedAgents ?? 0} queued agent(s), uptime ${health.uptime ?? 0}s`
+          `${health.activeAgents ?? 0} active / ${health.queuedAgents ?? 0} queued agent(s)` +
+          (health.maxActiveAgentsObserved !== undefined ? `, peak ${health.maxActiveAgentsObserved}` : '') +
+          `, uptime ${health.uptime ?? 0}s`
       );
     }),
 
@@ -142,7 +145,7 @@ export function createToolHandlers(client, options = {}) {
       return text({ ...planSummary(plan), next: `execute with odw_run {"planId": "${plan.planId}"}` });
     }),
 
-    odw_run: guarded(async ({ prompt, planId, cwd, wait }) => {
+    odw_run: guarded(async ({ prompt, planId, cwd, maxAgents, wait }) => {
       if (Boolean(prompt) === Boolean(planId)) {
         return fail('pass exactly one of prompt or planId');
       }
@@ -155,7 +158,9 @@ export function createToolHandlers(client, options = {}) {
           );
         }
       } else {
-        ({ plan } = await client.plan(prompt, {}));
+        const planOptions = {};
+        if (maxAgents !== undefined) planOptions.maxAgents = maxAgents;
+        ({ plan } = await client.plan(prompt, planOptions));
         planCache.set(plan.planId, plan);
       }
       const { workflowId } = await client.exec(plan, { cwd: cwd || process.cwd() });

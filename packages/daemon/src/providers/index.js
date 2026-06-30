@@ -81,3 +81,37 @@ export function resolveProvider(model, config, opts = {}) {
 
   throw new Error(`No provider route for model "${id}". Configure apiKeys/baseURLs in ~/.odw/config.json.`);
 }
+
+/**
+ * Provider readiness is intentionally route/key only: no network calls, no
+ * model probes. It catches deterministic config failures before planning or
+ * execution spends time building a workflow.
+ *
+ * @param {import('../config.js').DaemonConfig} config
+ * @param {Array<{purpose: string, model: string, required?: boolean}>} entries
+ * @param {{fetchImpl?: typeof fetch}} [opts]
+ */
+export function checkProviderReadiness(config, entries, opts = {}) {
+  const checks = [];
+  const seen = new Set();
+  for (const entry of entries) {
+    const purpose = String(entry.purpose ?? 'model');
+    const model = String(entry.model ?? config.models.default);
+    const key = `${purpose}\0${model}\0${entry.required !== false}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const { provider, model: routedModel } = resolveProvider(model, config, opts);
+      checks.push({ purpose, model, routedModel, provider: provider.name ?? 'unknown', required: entry.required !== false, ok: true });
+    } catch (error) {
+      checks.push({ purpose, model, required: entry.required !== false, ok: false, reason: String(error.message) });
+    }
+  }
+
+  const failed = checks.filter((c) => c.required && !c.ok);
+  return {
+    ok: failed.length === 0,
+    checks,
+    ...(failed.length ? { reason: failed.map((c) => `${c.purpose} ${c.model}: ${c.reason}`).join('; ') } : {}),
+  };
+}

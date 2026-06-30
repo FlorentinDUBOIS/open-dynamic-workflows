@@ -462,6 +462,7 @@ export function createRuntime(deps) {
       activeWorkflows: active.size,
       queueSize: queue.size(),
       queuePending: queue.pending(),
+      queueHighWaterPending: typeof queue.highWaterPending === 'function' ? queue.highWaterPending() : undefined,
       maxConcurrency: config.daemon.maxConcurrency,
     };
   }

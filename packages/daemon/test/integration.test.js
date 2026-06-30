@@ -49,6 +49,7 @@ test('integration: /health reports a live daemon', async () => {
   const health = await res.json();
   assert.equal(health.status, 'ok');
   assert.equal(health.maxConcurrency, 8);
+  assert.equal(health.maxActiveAgentsObserved, 0);
 });
 
 test('integration: plan → exec → result completes a full workflow over HTTP', async () => {
@@ -85,11 +86,48 @@ test('integration: plan → exec → result completes a full workflow over HTTP'
 test('integration: /config/check passes for the mock (usable model) and plan reports verification', async () => {
   const check = await (await fetch(`${base}/config/check`, { headers: AUTH })).json();
   assert.equal(check.ok, true, JSON.stringify(check));
+  assert.ok(check.checks.some((c) => c.purpose === 'default' && c.ok), JSON.stringify(check));
 
   // an audit-class prompt must include an adversarial verification node
   const { plan } = await post('/workflows/plan', { prompt: 'workflow: review every file in src for bugs' }).then((r) => r.json());
   assert.equal(plan.hasVerification, true, 'review/bug prompts should plan a verification pass');
   assert.ok(plan.taskGraph.tasks.some((t) => t.type === 'verification'));
+});
+
+test('integration: provider readiness fails before planning when the default model has no key', async () => {
+  const previousAnthropic = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  const badDaemon = await startDaemon({
+    port: 0,
+    dbPath: join(HOME, 'bad-provider.db'),
+    logStream: { write() {} },
+    configOverrides: {
+      daemon: { maxConcurrency: 2, logLevel: 'error' },
+      baseURLs: { default: mock.url },
+      apiKeys: { anthropic: '' },
+      models: { planning: 'mock-planner', default: 'claude-sonnet-4-6', fallback: 'mock-model' },
+    },
+  });
+  try {
+    const badBase = `http://127.0.0.1:${badDaemon.port}`;
+    const check = await (await fetch(`${badBase}/config/check`, { headers: AUTH })).json();
+    assert.equal(check.ok, false, JSON.stringify(check));
+    assert.match(check.reason, /anthropic provider requires an API key/);
+
+    const res = await fetch(`${badBase}/workflows/plan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...AUTH },
+      body: JSON.stringify({ prompt: 'workflow: audit every file for bugs' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error.code, 'provider_not_ready');
+    assert.match(body.error.message, /default claude-sonnet-4-6/);
+  } finally {
+    await badDaemon.close();
+    if (previousAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropic;
+  }
 });
 
 test('integration: a bare --script-style plan uses the configured default model (not the hardcoded fallback)', async () => {

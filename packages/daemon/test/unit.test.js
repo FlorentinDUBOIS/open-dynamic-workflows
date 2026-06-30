@@ -18,7 +18,7 @@ const { createSandbox } = await import('../src/sandbox.js');
 const { createAnthropicProvider } = await import('../src/providers/anthropic.js');
 const { createOpenAIProvider } = await import('../src/providers/openai.js');
 const { createOllamaProvider } = await import('../src/providers/ollama.js');
-const { resolveProvider } = await import('../src/providers/index.js');
+const { checkProviderReadiness, resolveProvider } = await import('../src/providers/index.js');
 
 after(() => rmSync(HOME, { recursive: true, force: true }));
 
@@ -205,7 +205,29 @@ test('provider routing: claude→anthropic, gpt→openai, ollama→ollama, prefi
   assert.throws(() => resolveProvider('mystery-model', config), /No provider route/);
 });
 
-test('provider error classification: 429→rate_limit, 503→service_unavailable', async () => {
+test('provider readiness: reports missing required keys without probing the network', () => {
+  const config = { ...defaultConfig(), apiKeys: {}, models: { default: 'claude-sonnet-4-6', fallback: 'gpt-4o' } };
+  const previousAnthropic = process.env.ANTHROPIC_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const readiness = checkProviderReadiness(config, [
+      { purpose: 'default', model: 'claude-sonnet-4-6', required: true },
+      { purpose: 'fallback', model: 'gpt-4o', required: false },
+    ]);
+    assert.equal(readiness.ok, false);
+    assert.match(readiness.reason, /default claude-sonnet-4-6: anthropic provider requires an API key/);
+    assert.equal(readiness.checks.find((c) => c.purpose === 'fallback').required, false);
+  } finally {
+    if (previousAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropic;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
+});
+
+test('provider error classification: maps transient HTTP status codes', async () => {
   const failingFetch = (status) => async () => ({ ok: false, status, text: async () => 'err' });
   const provider = createOpenAIProvider({ apiKey: 'k', fetchImpl: failingFetch(429) });
   await assert.rejects(() => provider.call({ model: 'gpt-4o', prompt: 'p' }), (e) => e.code === 'rate_limit');
@@ -328,6 +350,7 @@ test('queue: concurrency is respected', async () => {
   }, { maxConcurrency: 2 });
   await Promise.all(Array.from({ length: 6 }, () => queue.executeAgent({ model: 'm', prompt: 'p' })));
   assert.equal(peak, 2);
+  assert.equal(queue.highWaterPending(), 2);
 });
 
 // ── tools ────────────────────────────────────────────────────────────────────

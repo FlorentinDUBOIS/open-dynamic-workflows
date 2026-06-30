@@ -114,10 +114,11 @@ test('odw_run with unknown planId explains the cache expired', async () => {
 test('odw_run with prompt plans then executes; cwd defaults to process.cwd()', async () => {
   const client = stubClient();
   const handlers = createToolHandlers(client);
-  const response = await handlers.odw_run({ prompt: 'migrate to TS' });
+  const response = await handlers.odw_run({ prompt: 'migrate to TS', maxAgents: 6 });
   assert.notEqual(response.isError, true);
   assert.match(textOf(response), /wf_run1/);
   assert.match(textOf(response), /"status": "running"/);
+  assert.deepEqual(client.calls.find(([name]) => name === 'plan'), ['plan', 'migrate to TS', { maxAgents: 6 }]);
   const [, plan, opts] = client.calls.find(([name]) => name === 'exec');
   assert.equal(plan.planId, 'plan_abc');
   assert.equal(opts.cwd, process.cwd());

@@ -11,7 +11,7 @@ import { loadConfig, ensureHome } from './config.js';
 import { createLogger } from './logger.js';
 import { openDatabase, createStore } from './db.js';
 import { createAgentQueue } from './agent-queue.js';
-import { resolveProvider } from './providers/index.js';
+import { checkProviderReadiness, resolveProvider } from './providers/index.js';
 import { createRuntime } from './runtime.js';
 import { createResumability } from './resumability.js';
 import { createServer } from './server.js';
@@ -97,15 +97,23 @@ export async function startDaemon(options = {}) {
   const runtime = createRuntime({ store, queue, config, events, logger, planner });
   const resumability = createResumability({ store, runtime, logger });
 
-  /** Preflight: can we actually reach the configured default model? */
-  const checkModel = () => {
-    const model = config.models.default;
-    try {
-      resolveProvider(model, config, { fetchImpl: options.fetchImpl });
-      return { ok: true, model };
-    } catch (error) {
-      return { ok: false, model, reason: String(error.message) };
+  /** Preflight: do the models a plan/run needs have a route and required key? */
+  const checkModel = (preflightOptions = {}) => {
+    const modelId = (model) =>
+      ['planning', 'default', 'fallback'].includes(model) && config.models?.[model]
+        ? config.models[model]
+        : model;
+    const entries = [
+      { purpose: 'default', model: modelId(preflightOptions.plan?.strategy?.budget?.model ?? config.models.default), required: true },
+      { purpose: 'fallback', model: modelId(config.models.fallback), required: false },
+    ];
+    if (preflightOptions.includePlanning) {
+      entries.push({ purpose: 'planning', model: modelId(config.models.planning), required: true });
     }
+    for (const role of preflightOptions.plan?.roles ?? []) {
+      if (role?.model) entries.push({ purpose: `role:${role.id ?? role.title ?? 'agent'}`, model: modelId(role.model), required: true });
+    }
+    return checkProviderReadiness(config, entries, { fetchImpl: options.fetchImpl });
   };
 
   const api = createServer({ runtime, store, config, logger, planner, events, checkModel, auth: { mode: authMode, token } });
