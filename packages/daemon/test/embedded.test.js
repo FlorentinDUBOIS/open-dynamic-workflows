@@ -78,6 +78,27 @@ test('embedded: an explicit resolveProvider can replace the agent backend', asyn
 
 // ── memory store ─────────────────────────────────────────────────────────────
 
+test('embedded: prompt runs honor maxAgents with the real planner and host backend', async () => {
+  const prompts = [];
+  const orch = createEmbeddedOrchestrator({
+    invoke: async (job) => {
+      prompts.push(job.prompt);
+      if (/Enumerate the concrete targets/.test(job.prompt)) return '{"items":["a","b","c","d","e"]}';
+      if (/Find false positives|Challenge the severity|What is MISSING/.test(job.prompt)) {
+        return '{"approved":true,"confidence":0.9,"critique":"","rejectedItems":[]}';
+      }
+      if (/Merge verified results/.test(job.prompt)) return '{"summary":"done","details":[]}';
+      return '{"findings":[],"confidence":0.9}';
+    },
+    maxConcurrency: 6,
+  });
+  const { status, result, plan: planned } = await orch.run('workflow: audit every file in src for security bugs', { maxAgents: 6 });
+  assert.equal(status, 'completed');
+  assert.equal(result.summary, 'done');
+  assert.equal(planned.estimate.totalAgents, 6);
+  assert.equal(prompts.length, 6, '1 discovery + 1 capped work item + 3 critics + 1 synthesis');
+});
+
 test('memory store: round-trips a workflow, nodes, totals, checkpoints', () => {
   const s = createMemoryStore();
   s.insertWorkflow({ workflow_id: 'wf1', status: 'running', root_prompt: 'p', compiled_script: 's', execution_strategy: '{}', topology: 'hybrid', total_agents: 2, budget_max_usd: 10 });

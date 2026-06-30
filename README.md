@@ -207,6 +207,8 @@ The adapters are how your existing tool drives the engine. The easiest default i
 | **OpenClaw** | `odw-daemon integrate openclaw` installs the ClawHub-format skill | **No** — the skill is a thin client over the daemon API |
 | **VS Code** | `odw-daemon integrate vscode` installs the local extension into `~/.vscode/extensions`; it adds a sidebar of live workflows, a dashboard webview, and a status bar that spins while agents run | n/a (UI client over the daemon API) |
 
+OpenCode native detail: both the chat trigger and the explicit `odw_run` tool try the embedded host-model engine before daemon fallback. Set `ODW_MAX_AGENTS=20` to hard-cap embedded or daemon plans, and `ODW_HOST_MODEL=provider/model` when you want embedded agents pinned to a specific OpenCode model.
+
 Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex now gets a proper local plugin package, but Codex, Cursor, Kimi/Gemini/Zed-style MCP clients, and similar hosts are still best served by the MCP bridge for execution. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — plugins, MCP, skills, `AGENTS.md`, `GEMINI.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 
 ---

@@ -22,7 +22,7 @@ const HOST_MODEL = 'host:default';
 /**
  * @param {{ invoke?: (job: object, opts: {signal?: AbortSignal}) => Promise<string|{text: string, usage?: object}>,
  *           resolveProvider?: (model: string) => {provider: object, model: string},
- *           maxConcurrency?: number, perAgentTimeout?: number, maxAttempts?: number,
+ *           maxConcurrency?: number, maxAgents?: number, perAgentTimeout?: number, maxAttempts?: number,
  *           model?: string, safety?: object, git?: object, logger?: object,
  *           store?: object, events?: object }} options
  */
@@ -32,6 +32,7 @@ export function createEmbeddedOrchestrator(options = {}) {
   const events = options.events ?? new EventEmitter();
   events.setMaxListeners?.(100);
   const maxConcurrency = Math.max(1, options.maxConcurrency ?? 8);
+  const defaultMaxAgents = positiveInt(options.maxAgents);
   const model = options.model ?? HOST_MODEL;
 
   let resolveProvider = options.resolveProvider;
@@ -66,6 +67,7 @@ export function createEmbeddedOrchestrator(options = {}) {
   const planner = (prompt, plannerOptions = {}) =>
     createPlan(prompt, {
       ...plannerOptions,
+      maxAgents: positiveInt(plannerOptions.maxAgents) ?? defaultMaxAgents,
       strategy: mergeStrategy({
         budget: { model },
         concurrency: { max: maxConcurrency, default: maxConcurrency },
@@ -80,11 +82,11 @@ export function createEmbeddedOrchestrator(options = {}) {
   /**
    * Plan (if given a prompt) and execute to completion, returning the result.
    * @param {string|object} promptOrPlan a natural-language prompt or a prebuilt plan
-   * @param {{cwd?: string, args?: object, strategy?: object}} [runOptions]
+   * @param {{cwd?: string, args?: object, strategy?: object, maxAgents?: number}} [runOptions]
    */
   async function run(promptOrPlan, runOptions = {}) {
     const plan = typeof promptOrPlan === 'string'
-      ? await planner(promptOrPlan, { strategy: runOptions.strategy })
+      ? await planner(promptOrPlan, { strategy: runOptions.strategy, maxAgents: runOptions.maxAgents })
       : promptOrPlan;
 
     const workflowId = await runtime.execWorkflow(plan, runOptions.strategy, {
@@ -101,4 +103,10 @@ export function createEmbeddedOrchestrator(options = {}) {
   }
 
   return { run, runtime, queue, store, events, execWorkflow: runtime.execWorkflow, control: runtime.control };
+}
+
+function positiveInt(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }

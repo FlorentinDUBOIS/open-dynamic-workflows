@@ -173,6 +173,17 @@ function planSummary(plan) {
   ].join(' · ');
 }
 
+function positiveInt(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function planOptions(args = {}) {
+  const maxAgents = positiveInt(args.maxAgents ?? process.env.ODW_MAX_AGENTS);
+  return maxAgents ? { maxAgents } : {};
+}
+
 // Recursion guard (verified necessary live on CLI 1.2.27): the chat.message
 // hook fires for EVERY user message in EVERY session of this opencode process —
 // including the prompts ODW itself sends to its child agent sessions. Agent
@@ -196,7 +207,7 @@ let embeddedActive = false;
  * degrades to the daemon/directive paths. Returns a result message, or null if
  * embedded mode is unavailable so the caller can fall back.
  */
-async function runEmbedded(client, effective, directory) {
+async function runEmbedded(client, effective, directory, options = {}) {
   let createEmbeddedOrchestrator, createOpencodeBackend;
   try {
     ({ createEmbeddedOrchestrator } = await import('odw-daemon/embedded'));
@@ -215,7 +226,7 @@ async function runEmbedded(client, effective, directory) {
   try {
     const startedAt = Date.now();
     const orchestrator = createEmbeddedOrchestrator({ invoke: backend.invoke, maxConcurrency: 4 });
-    const { workflowId, result } = await orchestrator.run(effective.cleanPrompt, { cwd: directory });
+    const { workflowId, result, plan } = await orchestrator.run(effective.cleanPrompt, { cwd: directory, ...planOptions(options) });
     if (process.env.ODW_DEBUG) console.error(`[odw] embedded ran workflow=${workflowId} elapsed=${Date.now() - startedAt}ms resultType=${typeof result}`);
     const rendered = typeof result === 'string'
       ? result
@@ -223,6 +234,7 @@ async function runEmbedded(client, effective, directory) {
     return [
       `[open-dynamic-workflows · ${effective.mode} · EMBEDDED on your OpenCode model — no daemon, no extra API key]`,
       `Workflow ${workflowId} ran ODW's real multi-agent engine (plan → parallel agents → adversarial verify → synthesize) through your already-configured OpenCode model.`,
+      `Plan: ${planSummary(plan)}.`,
       `Synthesized result:`,
       rendered,
       `Present this synthesized result to the user. Do NOT redo the work yourself.`,
@@ -341,7 +353,7 @@ export const OdwPlugin = async ({ directory, client }) => {
       }
 
       try {
-        const { plan } = await daemon.plan(effective.cleanPrompt, { mode: effective.mode });
+        const { plan } = await daemon.plan(effective.cleanPrompt, { mode: effective.mode, ...planOptions() });
         const { workflowId } = await daemon.exec(plan, directory);
         textPart.text = [
           `[open-dynamic-workflows · ${effective.mode} trigger · daemon ONLINE]`,
@@ -365,11 +377,14 @@ export const OdwPlugin = async ({ directory, client }) => {
       odw_plan: tool({
         description:
           'Plan a dynamic multi-agent workflow without executing it. Returns the task graph, topology, roles, cost/time estimate and the generated orchestration script.',
-        args: { prompt: tool.schema.string().describe('what the workflow should accomplish') },
-        execute: guarded(async ({ prompt }) => {
+        args: {
+          prompt: tool.schema.string().describe('what the workflow should accomplish'),
+          maxAgents: tool.schema.number().optional().describe('optional hard cap on total agents'),
+        },
+        execute: guarded(async ({ prompt, maxAgents }) => {
           const gate = await daemonGate();
           if (gate) return gate;
-          const { plan } = await daemon.plan(prompt);
+          const { plan } = await daemon.plan(prompt, planOptions({ maxAgents }));
           return JSON.stringify(
             { planId: plan.planId, topology: plan.topology, estimate: plan.estimate, taskGraph: plan.taskGraph, script: plan.script },
             null,
@@ -380,11 +395,23 @@ export const OdwPlugin = async ({ directory, client }) => {
 
       odw_run: tool({
         description: 'Plan AND execute a dynamic multi-agent workflow via the local odw daemon. Returns the workflow id immediately.',
-        args: { prompt: tool.schema.string().describe('what the workflow should accomplish') },
-        execute: guarded(async ({ prompt }, context) => {
+        args: {
+          prompt: tool.schema.string().describe('what the workflow should accomplish'),
+          maxAgents: tool.schema.number().optional().describe('optional hard cap on total agents'),
+        },
+        execute: guarded(async ({ prompt, maxAgents }, context) => {
+          if (client?.session?.prompt && !embeddedActive) {
+            embeddedActive = true;
+            try {
+              const embedded = await runEmbedded(client, { mode: 'tool', cleanPrompt: prompt }, context.directory, { maxAgents });
+              if (embedded) return embedded;
+            } finally {
+              embeddedActive = false;
+            }
+          }
           const gate = await daemonGate();
           if (gate) return gate;
-          const { plan } = await daemon.plan(prompt);
+          const { plan } = await daemon.plan(prompt, planOptions({ maxAgents }));
           const { workflowId } = await daemon.exec(plan, context.directory);
           return `workflow ${workflowId} started — ${planSummary(plan)}. Check with odw_status.`;
         }),

@@ -60,6 +60,30 @@ const SAMPLE_PLAN = {
   taskGraph: { root: {}, tasks: [] },
 };
 
+function mockHostClient() {
+  const prompts = [];
+  const deleted = [];
+  let seq = 0;
+  return {
+    prompts,
+    deleted,
+    session: {
+      create: async () => ({ id: `host-${++seq}` }),
+      prompt: async ({ body }) => {
+        const prompt = body.parts[0].text;
+        prompts.push(prompt);
+        let text;
+        if (/Enumerate the concrete targets/.test(prompt)) text = '{"items":["a","b","c","d","e"]}';
+        else if (/Find false positives|Challenge the severity|What is MISSING/.test(prompt)) text = '{"approved":true,"confidence":0.9,"critique":"","rejectedItems":[]}';
+        else if (/Merge verified results/.test(prompt)) text = '{"summary":"done","details":[]}';
+        else text = '{"findings":[],"confidence":0.9}';
+        return { parts: [{ type: 'text', text }] };
+      },
+      delete: async ({ path }) => { deleted.push(path.id); },
+    },
+  };
+}
+
 test('plugin: chat.message rewrites trigger into a daemon-execution directive', async () => {
   const { server, port } = await stubDaemon({
     'GET /health': () => ({ status: 'ok', activeWorkflows: 0, activeAgents: 0, maxConcurrency: 16 }),
@@ -105,9 +129,10 @@ test('plugin: non-trigger messages pass through untouched', async () => {
 });
 
 test('plugin: tools execute against the daemon (run + status + workflows + ultracode)', async () => {
+  const planBodies = [];
   const { server, port } = await stubDaemon({
     'GET /health': () => ({ status: 'ok' }),
-    'POST /workflows/plan': () => ({ plan: SAMPLE_PLAN }),
+    'POST /workflows/plan': (body) => { planBodies.push(body); return { plan: SAMPLE_PLAN }; },
     'POST /workflows/exec': () => ({ workflowId: 'wf_tool1', status: 'running' }),
     'GET /workflows/wf_tool1': () => ({
       status: 'running', total_agents: 12, completed_agents: 4, failed_agents: 0, cost_usd: 0.5,
@@ -122,8 +147,9 @@ test('plugin: tools execute against the daemon (run + status + workflows + ultra
     const hooks = await OdwPlugin({ directory: DIR });
     const context = { directory: DIR, sessionID: 's', messageID: 'm', agent: 'a' };
 
-    const run = await hooks.tool.odw_run.execute({ prompt: 'audit everything' }, context);
+    const run = await hooks.tool.odw_run.execute({ prompt: 'audit everything', maxAgents: 6 }, context);
     assert.match(run, /wf_tool1 started/);
+    assert.equal(planBodies[0].options.maxAgents, 6);
 
     const status = await hooks.tool.odw_status.execute({ workflowId: 'wf_tool1' }, context);
     assert.match(status, /"completed": 4/);
@@ -140,6 +166,19 @@ test('plugin: tools execute against the daemon (run + status + workflows + ultra
     delete process.env.ODW_DAEMON_PORT;
     server.close();
   }
+});
+
+test('plugin: odw_run tool prefers embedded OpenCode model and honors maxAgents', async () => {
+  const client = mockHostClient();
+  const hooks = await OdwPlugin({ directory: DIR, client });
+  const out = await hooks.tool.odw_run.execute(
+    { prompt: 'workflow: audit every file in src for security bugs', maxAgents: 6 },
+    { directory: DIR }
+  );
+  assert.match(out, /EMBEDDED on your OpenCode model/);
+  assert.match(out, /~6 agents/);
+  assert.equal(client.prompts.length, 6, '1 discovery + 1 capped work item + 3 critics + 1 synthesis');
+  assert.equal(client.deleted.length, 6, 'embedded child sessions are cleaned up');
 });
 
 // ── bearer-token auth ────────────────────────────────────────────────────────
