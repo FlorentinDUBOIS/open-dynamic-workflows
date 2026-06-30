@@ -169,6 +169,12 @@ test('installZedMcp writes project Zed context server settings', () => {
     assert.equal(data.context_servers.odw.command, 'node');
     assert.ok(data.context_servers.odw.args[0].includes('mcp-server'));
     assert.match(readFileSync(join(targetDir, 'AGENTS.md'), 'utf8'), /Zed/);
+
+    const skill = readFileSync(join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'), 'utf8');
+    assert.match(skill, /^---\r?\nname: odw\r?\n/);
+    assert.match(skill, /Zed Agent/);
+    assert.match(skill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -358,6 +364,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
+    assert.ok(result.checks.some((check) => check.label === 'zed agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));

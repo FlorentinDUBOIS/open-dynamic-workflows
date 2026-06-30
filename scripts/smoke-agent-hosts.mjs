@@ -41,6 +41,8 @@ try {
     join(targetDir, '.cursor', 'skills', 'odw', 'SKILL.md'),
     join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
     join(targetDir, '.zed', 'settings.json'),
+    join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'),
+    join(targetDir, '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
     join(targetDir, '.opencode', 'plugins', 'odw.mjs'),
     join(targetDir, '.opencode', 'commands', 'ultracode.md'),
     join(home, '.codex', 'config.toml'),

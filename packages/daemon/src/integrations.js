@@ -65,7 +65,8 @@ export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_RE
   current.context_servers.odw = mcpServerCommand({ repoRoot });
   writeJson(path, current);
   const instructionsPath = installAgentInstructions({ targetDir, host: 'Zed' });
-  return { kind: 'zed', path, instructionsPath, server: current.context_servers.odw };
+  const skillPath = installZedSkill({ targetDir, repoRoot });
+  return { kind: 'zed', path, instructionsPath, skillPath, server: current.context_servers.odw };
 }
 
 export function installCodexMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -100,6 +101,13 @@ export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAU
 export function installKimiSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.kimi', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'odw'), dest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  return dest;
+}
+
+export function installZedSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.agents', 'skills', 'odw');
+  copyFresh(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   return dest;
 }
@@ -280,6 +288,12 @@ function doctorChecksFor(kind, options = {}) {
       return [
         checkMcpJson('zed context server config', join(options.targetDir ?? process.cwd(), '.zed', 'settings.json'), 'context_servers', options),
         checkAgentInstructions('zed agent instructions', options.targetDir ?? process.cwd()),
+        checkText('zed agent skill', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'odw', 'SKILL.md'), [
+          'Zed Agent',
+          'odw_run',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('zed daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
       ];
     case 'zcode':
       return [...doctorChecksFor('mcp', options), ...doctorChecksFor('zed', options)];
