@@ -28,3 +28,21 @@ test('smoke-agent-hosts validates temp integrations and daemon readiness as JSON
   assert.ok(report.generatedFiles.some((path) => path.endsWith('AGENTS.md')));
   assert.ok(report.generatedFiles.some((path) => path.includes('.cursor') && path.endsWith('open-dynamic-workflows.mdc')));
 });
+
+test('smoke-agent-hosts can require specific host evidence', () => {
+  assert.throws(
+    () => execFileSync(
+      process.execPath,
+      [join(repoRoot, 'scripts', 'smoke-agent-hosts.mjs'), '--json', '--skip-host-probes', '--require-host', 'opencode'],
+      { encoding: 'utf8', cwd: repoRoot }
+    ),
+    (error) => {
+      assert.equal(error.status, 1);
+      const report = JSON.parse(error.stdout);
+      assert.equal(report.ok, false);
+      assert.deepEqual(report.requiredHosts, ['opencode']);
+      assert.match(report.error, /required host evidence missing: opencode/);
+      return true;
+    }
+  );
+});

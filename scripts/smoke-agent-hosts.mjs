@@ -9,10 +9,12 @@ const execFileAsync = promisify(execFile);
 const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
 const skipHostProbes = args.has('--skip-host-probes');
+const requiredHosts = valuesFor('--require-host');
 const repoRoot = resolve(new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 
 const report = {
   ok: false,
+  requiredHosts,
   integration: { ok: false },
   daemon: { ok: false },
   doctor: { ok: false },
@@ -78,7 +80,12 @@ try {
     report.hosts = await probeHosts();
   }
 
-  report.ok = report.integration.ok && report.daemon.ok && report.doctor.ok;
+  const missingRequired = requiredHosts.filter((name) => !report.hosts.some((host) => host.name === name && host.status === 'ok'));
+  if (missingRequired.length) {
+    report.error = `required host evidence missing: ${missingRequired.join(', ')}`;
+  }
+
+  report.ok = report.integration.ok && report.daemon.ok && report.doctor.ok && missingRequired.length === 0;
   finish(report.ok ? 0 : 1);
 } catch (error) {
   report.error = String(error?.stack || error?.message || error);
@@ -150,6 +157,20 @@ async function commandPath(command) {
 
 function firstLine(text) {
   return String(text ?? '').trim().split(/\r?\n/)[0]?.slice(0, 240) || '';
+}
+
+function valuesFor(flag) {
+  const raw = process.argv.slice(2);
+  const values = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === flag && raw[i + 1] && !raw[i + 1].startsWith('--')) {
+      values.push(raw[i + 1]);
+      i++;
+    } else if (raw[i].startsWith(`${flag}=`)) {
+      values.push(raw[i].slice(flag.length + 1));
+    }
+  }
+  return values.flatMap((value) => value.split(',').map((item) => item.trim()).filter(Boolean));
 }
 
 function finish(code) {
