@@ -16,6 +16,7 @@ import {
   installGenericMcpConfig,
   installKimiMcp,
   installOpencodePlugin,
+  installVscodeExtension,
   installZedMcp,
   mcpServerCommand,
 } from '../src/integrations.js';
@@ -193,6 +194,26 @@ test('installOpencodePlugin writes a local plugin wrapper and slash commands', (
   }
 });
 
+test('installVscodeExtension installs the unpacked VS Code extension into the user extension dir', () => {
+  const home = tempDir('odw-vscode-home-');
+  try {
+    const result = installVscodeExtension({ home, repoRoot });
+    installVscodeExtension({ home, repoRoot });
+
+    assert.equal(result.kind, 'vscode');
+    assert.match(result.path.replace(/\\/g, '/'), /\.vscode\/extensions\/open-dynamic-workflows\.odw-vscode-0\.1\.0$/);
+    assert.ok(existsSync(join(result.path, 'package.json')));
+    assert.ok(existsSync(join(result.path, 'extension.js')));
+    assert.ok(existsSync(join(result.path, 'media', 'icon.svg')));
+
+    const manifest = JSON.parse(readFileSync(join(result.path, 'package.json'), 'utf8'));
+    assert.equal(manifest.name, 'odw-vscode');
+    assert.equal(manifest.publisher, 'open-dynamic-workflows');
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('installAntigravity wires Gemini and Antigravity MCP configs without clobbering existing servers', () => {
   const home = tempDir('odw-antigravity-home-');
   const targetDir = tempDir('odw-antigravity-target-');
@@ -321,6 +342,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
+    assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));

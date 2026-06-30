@@ -139,6 +139,15 @@ export function installOpencodePlugin({ targetDir = process.cwd(), repoRoot = DE
   return { kind: 'opencode', pluginPath, commandsPath: commandsDest };
 }
 
+export function installVscodeExtension({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const src = join(repoRoot, 'packages', 'vscode-extension');
+  const manifest = readJson(join(src, 'package.json'), {});
+  const extensionId = `${manifest.publisher}.${manifest.name}-${manifest.version}`;
+  const dest = join(home, '.vscode', 'extensions', extensionId);
+  copyFresh(src, dest);
+  return { kind: 'vscode', path: dest };
+}
+
 export function installAgentIntegration(kind, options = {}) {
   switch (kind) {
     case 'mcp':
@@ -164,6 +173,9 @@ export function installAgentIntegration(kind, options = {}) {
       return { kind, steps: [installGenericMcpConfig(options), installZedMcp(options)] };
     case 'opencode':
       return installOpencodePlugin(options);
+    case 'vscode':
+    case 'vs-code':
+      return installVscodeExtension(options);
     case 'antigravity':
       return installAntigravity(options);
     case 'openclaw':
@@ -180,12 +192,13 @@ export function installAgentIntegration(kind, options = {}) {
           installGeminiMcp(options),
           installZedMcp(options),
           installOpencodePlugin(options),
+          installVscodeExtension(options),
           installAntigravity(options),
           installOpenClaw(options),
         ],
       };
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
   }
 }
 
@@ -252,6 +265,13 @@ function doctorChecksFor(kind, options = {}) {
         checkExists('opencode ultracode command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'ultracode.md')),
         checkExists('opencode workflows command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'workflows.md')),
       ];
+    case 'vscode':
+    case 'vs-code':
+      return [
+        checkExists('vscode extension', join(vscodeExtensionPath(options), 'package.json')),
+        checkExists('vscode extension entrypoint', join(vscodeExtensionPath(options), 'extension.js')),
+        checkExists('vscode extension icon', join(vscodeExtensionPath(options), 'media', 'icon.svg')),
+      ];
     case 'antigravity':
       return [
         checkExists('antigravity skill', join(options.home ?? homedir(), '.gemini', 'skills', 'odw', 'SKILL.md')),
@@ -271,11 +291,12 @@ function doctorChecksFor(kind, options = {}) {
         ...doctorChecksFor('gemini', options),
         ...doctorChecksFor('zed', options),
         ...doctorChecksFor('opencode', options),
+        ...doctorChecksFor('vscode', options),
         ...doctorChecksFor('antigravity', options),
         ...doctorChecksFor('openclaw', options),
       ];
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, vscode, antigravity, openclaw, all)`);
   }
 }
 
@@ -404,6 +425,12 @@ function writeMcpServersJson(path, repoRoot) {
   current.mcpServers.odw = mcpServerCommand({ repoRoot });
   writeJson(path, current);
   return current;
+}
+
+function vscodeExtensionPath(options = {}) {
+  const repoRoot = options.repoRoot ?? DEFAULT_REPO_ROOT;
+  const manifest = readJson(join(repoRoot, 'packages', 'vscode-extension', 'package.json'), {});
+  return join(options.home ?? homedir(), '.vscode', 'extensions', `${manifest.publisher}.${manifest.name}-${manifest.version}`);
 }
 
 function objectOrEmpty(value) {

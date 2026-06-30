@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
@@ -46,3 +47,35 @@ test('smoke-agent-hosts can require specific host evidence', () => {
     }
   );
 });
+
+test('smoke-agent-hosts executes Windows command shims from paths with spaces', () => {
+  const fakeBin = mkdtempSync(join(tmpdir(), 'odw fake bin '));
+  try {
+    writeFileSync(join(fakeBin, 'code.cmd'), '@echo off\r\necho 9.9.9\r\n', 'utf8');
+    const pathValue = `${fakeBin}${delimiter}${process.env.PATH || ''}`;
+    const output = execFileSync(
+      process.execPath,
+      [join(repoRoot, 'scripts', 'smoke-agent-hosts.mjs'), '--json', '--require-host', 'vscode'],
+      {
+        encoding: 'utf8',
+        cwd: repoRoot,
+        env: { ...process.env, PATH: pathValue, Path: pathValue },
+      }
+    );
+    const report = JSON.parse(output);
+    const vscode = report.hosts.find((host) => host.name === 'vscode');
+    assert.equal(vscode.status, 'ok');
+    assert.equal(vscode.output, '9.9.9');
+  } finally {
+    safeRemoveTemp(fakeBin);
+  }
+});
+
+function safeRemoveTemp(path) {
+  const resolvedPath = resolve(path);
+  const resolvedTemp = resolve(tmpdir());
+  if (!resolvedPath.toLowerCase().startsWith(resolvedTemp.toLowerCase())) {
+    throw new Error(`refusing cleanup outside temp: ${resolvedPath}`);
+  }
+  rmSync(path, { recursive: true, force: true });
+}

@@ -113,7 +113,8 @@ odw-daemon integrate gemini       # writes ~/.gemini/settings.json + GEMINI.md
 odw-daemon integrate zed          # writes .zed/settings.json + AGENTS.md
 odw-daemon integrate zcode        # generic MCP + Zed-style project settings
 odw-daemon integrate opencode     # local OpenCode plugin wrapper + slash commands
-odw-daemon integrate antigravity  # Gemini/Antigravity MCP configs + skill + saved workflow
+odw-daemon integrate vscode       # installs the local VS Code dashboard extension
+odw-daemon integrate antigravity  # Antigravity MCP configs + skill + saved workflow
 odw-daemon integrate openclaw     # OpenClaw skill folder
 odw-daemon doctor all             # verify configs and daemon readiness
 npm run smoke:hosts               # live temp install + daemon + host CLI probe
@@ -181,7 +182,7 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds a Cursor project rule, `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json` plus `AGENTS.md`, `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json` plus `GEMINI.md`, `integrate zed` writes Zed `context_servers` plus `AGENTS.md`, `integrate zcode` writes generic MCP plus Zed-style project settings, and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds a Cursor project rule, `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json` plus `AGENTS.md`, `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json` plus `GEMINI.md`, `integrate zed` writes Zed `context_servers` plus `AGENTS.md`, `integrate zcode` writes generic MCP plus Zed-style project settings, `integrate vscode` installs the local dashboard extension into `~/.vscode/extensions`, and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
 
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 
@@ -201,7 +202,7 @@ The adapters are how your existing tool drives the engine. The easiest default i
 | **OpenCode** | `odw-daemon integrate opencode` writes a local plugin wrapper and `/ultracode` + `/workflows` commands | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
 | **Antigravity** | `odw-daemon integrate antigravity` writes Antigravity MCP configs (`~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `.agents/mcp_config.json`) plus the `odw` skill and saved `/odw-run` workflow | **No** — Antigravity exposes MCP/tools, skills, and saved workflows, but no documented model API to invoke the host model; full ODW uses the daemon |
 | **OpenClaw** | `odw-daemon integrate openclaw` installs the ClawHub-format skill | **No** — the skill is a thin client over the daemon API |
-| **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | n/a (UI client over the daemon API) |
+| **VS Code** | `odw-daemon integrate vscode` installs the local extension into `~/.vscode/extensions`; it adds a sidebar of live workflows, a dashboard webview, and a status bar that spins while agents run | n/a (UI client over the daemon API) |
 
 Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex, Cursor, Kimi/Gemini/Zed-style MCP clients, and similar hosts are best served by the MCP bridge today. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — MCP, skills, `AGENTS.md`, `GEMINI.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 

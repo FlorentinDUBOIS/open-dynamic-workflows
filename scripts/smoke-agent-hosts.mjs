@@ -51,6 +51,7 @@ try {
     join(home, '.gemini', 'skills', 'odw', 'SKILL.md'),
     join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md'),
     join(targetDir, '.agents', 'mcp_config.json'),
+    join(home, '.vscode', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'package.json'),
     join(home, '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md'),
   ];
   const missing = report.generatedFiles.filter((file) => !existsSync(file));
@@ -110,6 +111,7 @@ async function probeHosts() {
     { name: 'gemini', command: 'gemini', args: ['--version'] },
     { name: 'zed', command: 'zed', args: ['--version'] },
     { name: 'zcode', command: 'zcode', args: ['--version'] },
+    { name: 'vscode', command: 'code', args: ['--version'] },
   ];
   const results = [];
   for (const probe of probes) {
@@ -135,7 +137,12 @@ async function probeHosts() {
 
 function runFoundCommand(found, args) {
   if (process.platform === 'win32' && /\.cmd$/i.test(found)) {
-    return execFileAsync('cmd.exe', ['/d', '/s', '/c', found, ...args], { encoding: 'utf8', timeout: 15_000 });
+    const commandLine = [quoteCmdArg(found), ...args.map(quoteCmdArg)].join(' ');
+    return execFileAsync('cmd.exe', ['/d', '/s', '/c', `"${commandLine}"`], {
+      encoding: 'utf8',
+      timeout: 15_000,
+      windowsVerbatimArguments: true,
+    });
   }
   if (process.platform === 'win32' && /\.ps1$/i.test(found)) {
     return execFileAsync(
@@ -145,6 +152,12 @@ function runFoundCommand(found, args) {
     );
   }
   return execFileAsync(found, args, { encoding: 'utf8', timeout: 15_000 });
+}
+
+function quoteCmdArg(value) {
+  const text = String(value);
+  if (!/[\s&()^=;!'+,`~[\]{}]/.test(text)) return text;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 async function commandPath(command) {
