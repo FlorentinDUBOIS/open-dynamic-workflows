@@ -119,7 +119,7 @@ odw-daemon integrate antigravity  # Antigravity plugin bundles + MCP configs + O
 odw-daemon integrate openclaw     # OpenClaw skill folder
 odw-daemon doctor all             # verify configs and daemon readiness
 odw-daemon doctor all --json      # machine-readable readiness for agents/CI
-npm run smoke:hosts               # live temp install + daemon + host CLI probe
+npm run smoke:hosts               # temp install + live workflow + MCP bridge + host CLI probes
 ```
 
 After that, open the target agent and say `workflow: ...`, `ultracode ...`, or `/deep-research ...`.
@@ -189,7 +189,7 @@ For broad agent support, start with `odw-daemon integrate mcp`. It writes a proj
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 Add `--json` to `integrate` or `doctor` when an agent, CI job, or installer UI needs stable machine-readable output instead of colored text.
 
-For release and support checks, run `npm run smoke:hosts`. It creates a temporary full install, verifies the combined `AGENTS.md` guidance covers generic MCP hosts, Kimi Code, Zed, and zcode, starts a temporary daemon, parses `odw-daemon doctor all --json` so every named adapter is checked explicitly, and probes installed host CLIs. Missing proprietary hosts are reported as skipped instead of faking coverage.
+For release and support checks, run `npm run smoke:hosts`. It creates a temporary full install, verifies the combined `AGENTS.md` guidance covers generic MCP hosts, Kimi Code, Zed, and zcode, starts a temporary daemon against a zero-cost mock provider, completes a real workflow, completes a real `odw_run` through the MCP bridge, parses `odw-daemon doctor all --json` so every named adapter is checked explicitly, and probes installed host CLIs. Missing proprietary hosts are reported as skipped instead of faking coverage.
 Use `npm run smoke:hosts -- --require-host opencode` when a release machine is expected to prove a specific host is runnable.
 
 The adapters are how your existing tool drives the engine. The easiest default is MCP: `odw-daemon integrate codex` and `odw-daemon integrate cursor` point the host at the local `odw-mcp` bridge, so the host gets `odw_plan`, `odw_run`, `odw_status`, `odw_result`, and `odw_control` tools without the compiled orchestration script entering chat context. Codex now also gets the official plugin packaging path, so the same skill and MCP server can be surfaced from Codex's plugin browser. Native adapters sit beside that where the host exposes better hooks. **On OpenCode the engine runs *inside* the plugin, on your already-configured model — no daemon and no second API key.** Everywhere else the engine runs in the local daemon (its own key) and the adapter is a thin client over its localhost API.

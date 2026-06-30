@@ -33,6 +33,16 @@ test('smoke-agent-hosts validates temp integrations and daemon readiness as JSON
   assert.equal(report.integration.ok, true);
   assert.equal(report.daemon.ok, true);
   assert.equal(report.doctor.ok, true);
+  assert.equal(report.workflow.ok, true);
+  assert.equal(report.workflow.status, 'completed');
+  assert.match(report.workflow.workflowId, /^wf_/);
+  assert.equal(report.workflow.result.summary, 'mock synthesis of all results');
+  assert.ok(report.workflow.mockCalls >= 1);
+  assert.equal(report.mcp.ok, true);
+  assert.ok(report.mcp.tools.includes('odw_run'));
+  assert.match(report.mcp.health, /daemon ok/);
+  assert.equal(report.mcp.run.status, 'completed');
+  assert.match(report.mcp.run.workflowId, /^wf_/);
   assert.equal(Object.hasOwn(report.doctor, 'stdout'), false);
   assert.ok(report.doctor.integration.checks.some((check) => check.label === 'zcode agent instructions'));
   assert.ok(report.doctor.integration.checks.some((check) => check.label === 'zcode ultracode agent skill'));
