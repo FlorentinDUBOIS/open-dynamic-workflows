@@ -33,9 +33,10 @@ export function installCursorMcp({ home = homedir(), targetDir = process.cwd(), 
   const current = writeMcpServersJson(path, repoRoot);
   const rulePath = installCursorRule({ targetDir });
   const skillPath = installCursorSkill({ targetDir, repoRoot });
+  const ultracodeSkillPath = installCursorUltracodeSkill({ targetDir, repoRoot });
   const subagentPath = installCursorSubagent({ targetDir, repoRoot });
   const extensionPath = installEditorExtension({ home, repoRoot, profileDir: '.cursor' }).path;
-  return { kind: 'cursor', path, rulePath, skillPath, subagentPath, extensionPath, server: current.mcpServers.odw };
+  return { kind: 'cursor', path, rulePath, skillPath, ultracodeSkillPath, subagentPath, extensionPath, server: current.mcpServers.odw };
 }
 
 export function installGenericMcpConfig({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -50,7 +51,8 @@ export function installKimiMcp({ home = homedir(), targetDir = process.cwd(), re
   const current = writeMcpServersJson(path, repoRoot);
   const instructionsPath = installAgentInstructions({ targetDir, host: 'Kimi Code' });
   const skillPath = installKimiSkill({ targetDir, repoRoot });
-  return { kind: 'kimi', path, instructionsPath, skillPath, server: current.mcpServers.odw };
+  const ultracodeSkillPath = installKimiUltracodeSkill({ targetDir, repoRoot });
+  return { kind: 'kimi', path, instructionsPath, skillPath, ultracodeSkillPath, server: current.mcpServers.odw };
 }
 
 export function installGeminiMcp({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -69,7 +71,8 @@ export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_RE
   writeJson(path, current);
   const instructionsPath = installAgentInstructions({ targetDir, host: 'Zed' });
   const skillPath = installZedSkill({ targetDir, repoRoot });
-  return { kind: 'zed', path, instructionsPath, skillPath, server: current.context_servers.odw };
+  const ultracodeSkillPath = installZedUltracodeSkill({ targetDir, repoRoot });
+  return { kind: 'zed', path, instructionsPath, skillPath, ultracodeSkillPath, server: current.context_servers.odw };
 }
 
 export function installCodexMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -89,9 +92,10 @@ export function installCodexMcp({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT
 
 export function installCodexSkill({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(home, '.agents', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'skills', 'odw'), dest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
-  return { kind: 'codex-skill', path: dest };
+  copySkillWithBridge(join(repoRoot, 'packages', 'codex-adapter', 'skills', 'odw'), dest, repoRoot);
+  const ultracodeDest = join(home, '.agents', 'skills', 'ultracode');
+  copySkillWithBridge(join(repoRoot, 'packages', 'codex-adapter', 'skills', 'ultracode'), ultracodeDest, repoRoot);
+  return { kind: 'codex-skill', path: dest, ultracodePath: ultracodeDest };
 }
 
 export function installCodexPlugin({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -101,6 +105,7 @@ export function installCodexPlugin({ home = homedir(), repoRoot = DEFAULT_REPO_R
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'skills'), join(dest, 'skills'));
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'odw', 'scripts'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'ultracode', 'scripts'));
   cpSync(join(repoRoot, 'packages', 'codex-adapter', 'AGENTS.md'), join(dest, 'AGENTS.md'));
   cpSync(join(repoRoot, 'packages', 'codex-adapter', 'README.md'), join(dest, 'README.md'));
   cpSync(join(repoRoot, 'packages', 'codex-adapter', 'plugin.json'), join(dest, 'plugin.json'));
@@ -112,9 +117,12 @@ export function installCodexPlugin({ home = homedir(), repoRoot = DEFAULT_REPO_R
 
 export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.cursor', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
-  return dest;
+  return copySkillWithBridge(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest, repoRoot);
+}
+
+export function installCursorUltracodeSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.cursor', 'skills', 'ultracode');
+  return copySkillWithBridge(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'ultracode'), dest, repoRoot);
 }
 
 export function installCursorSubagent({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -126,16 +134,22 @@ export function installCursorSubagent({ targetDir = process.cwd(), repoRoot = DE
 
 export function installKimiSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.kimi', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'odw'), dest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
-  return dest;
+  return copySkillWithBridge(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'odw'), dest, repoRoot);
+}
+
+export function installKimiUltracodeSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.kimi', 'skills', 'ultracode');
+  return copySkillWithBridge(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'ultracode'), dest, repoRoot);
 }
 
 export function installZedSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.agents', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
-  return dest;
+  return copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'odw'), dest, repoRoot);
+}
+
+export function installZedUltracodeSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.agents', 'skills', 'ultracode');
+  return copySkillWithBridge(join(repoRoot, 'packages', 'zed-adapter', 'skills', 'ultracode'), dest, repoRoot);
 }
 
 export function installGeminiCommands({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -161,12 +175,16 @@ export function installAntigravity({ home = homedir(), targetDir = process.cwd()
   });
 
   const skillDest = join(home, '.gemini', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), skillDest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(skillDest, 'scripts'));
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), skillDest, repoRoot);
+
+  const ultracodeSkillDest = join(home, '.gemini', 'skills', 'ultracode');
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'ultracode'), ultracodeSkillDest, repoRoot);
 
   const configSkillDest = join(home, '.gemini', 'config', 'skills', 'odw');
-  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), configSkillDest);
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(configSkillDest, 'scripts'));
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), configSkillDest, repoRoot);
+
+  const configUltracodeSkillDest = join(home, '.gemini', 'config', 'skills', 'ultracode');
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'ultracode'), configUltracodeSkillDest, repoRoot);
 
   const workflowDest = join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md');
   ensureDir(dirname(workflowDest));
@@ -182,7 +200,9 @@ export function installAntigravity({ home = homedir(), targetDir = process.cwd()
   return {
     kind: 'antigravity',
     skillPath: skillDest,
+    ultracodeSkillPath: ultracodeSkillDest,
     configSkillPath: configSkillDest,
+    configUltracodeSkillPath: configUltracodeSkillDest,
     workflowPath: workflowDest,
     geminiMcpPath,
     antigravityCliMcpPath,
@@ -314,12 +334,22 @@ function doctorChecksFor(kind, options = {}) {
         checkExists('codex plugin skill', join(codexPluginPath(options), 'skills', 'odw', 'SKILL.md')),
         checkExists('codex plugin daemon bridge', join(codexPluginPath(options), 'scripts', 'daemon-bridge.js')),
         checkExists('codex plugin skill bridge', join(codexPluginPath(options), 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('codex plugin ultracode skill', join(codexPluginPath(options), 'skills', 'ultracode', 'SKILL.md'), [
+          'name: ultracode',
+          'odw_run',
+        ]),
+        checkExists('codex plugin ultracode bridge', join(codexPluginPath(options), 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
         checkCodexMarketplace('codex personal marketplace', codexMarketplacePath(options)),
       ];
     case 'codex-skill':
       return [
         checkExists('codex skill', join(options.home ?? homedir(), '.agents', 'skills', 'odw', 'SKILL.md')),
         checkExists('codex daemon bridge', join(options.home ?? homedir(), '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('codex ultracode skill', join(options.home ?? homedir(), '.agents', 'skills', 'ultracode', 'SKILL.md'), [
+          'name: ultracode',
+          'odw_run',
+        ]),
+        checkExists('codex ultracode daemon bridge', join(options.home ?? homedir(), '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
       ];
     case 'cursor':
       return [
@@ -331,6 +361,12 @@ function doctorChecksFor(kind, options = {}) {
         ]),
         checkExists('cursor agent skill', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'SKILL.md')),
         checkExists('cursor daemon bridge', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('cursor ultracode agent skill', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'ultracode', 'SKILL.md'), [
+          'name: ultracode',
+          'Cursor Agent',
+          'odw_run',
+        ]),
+        checkExists('cursor ultracode daemon bridge', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
         checkText('cursor odw orchestrator subagent', join(options.targetDir ?? process.cwd(), '.cursor', 'agents', 'odw-orchestrator.md'), [
           'name: odw-orchestrator',
           'model: inherit',
@@ -350,6 +386,12 @@ function doctorChecksFor(kind, options = {}) {
           'daemon-bridge.js --check',
         ]),
         checkExists('kimi daemon bridge', join(options.targetDir ?? process.cwd(), '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('kimi ultracode flow skill', join(options.targetDir ?? process.cwd(), '.kimi', 'skills', 'ultracode', 'SKILL.md'), [
+          'type: flow',
+          '/flow:ultracode',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('kimi ultracode daemon bridge', join(options.targetDir ?? process.cwd(), '.kimi', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
       ];
     case 'gemini':
     case 'gemini-cli':
@@ -377,6 +419,12 @@ function doctorChecksFor(kind, options = {}) {
           'daemon-bridge.js --check',
         ]),
         checkExists('zed daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('zed ultracode agent skill', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'ultracode', 'SKILL.md'), [
+          'Zed Agent',
+          'odw_run',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('zed ultracode daemon bridge', join(options.targetDir ?? process.cwd(), '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
       ];
     case 'zcode':
       return [...doctorChecksFor('mcp', options), ...doctorChecksFor('zed', options)];
@@ -399,8 +447,18 @@ function doctorChecksFor(kind, options = {}) {
         ...checkAntigravityPlugin('antigravity cli plugin', join(options.home ?? homedir(), '.gemini', 'antigravity-cli', 'plugins', 'odw'), options),
         ...checkAntigravityPlugin('antigravity workspace plugin', join(options.targetDir ?? process.cwd(), '.agents', 'plugins', 'odw'), options),
         checkExists('antigravity skill', join(options.home ?? homedir(), '.gemini', 'skills', 'odw', 'SKILL.md')),
+        checkText('antigravity ultracode skill', join(options.home ?? homedir(), '.gemini', 'skills', 'ultracode', 'SKILL.md'), [
+          'name: ultracode',
+          'odw_run',
+        ]),
+        checkExists('antigravity ultracode skill bridge', join(options.home ?? homedir(), '.gemini', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
         checkExists('antigravity config skill', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'SKILL.md')),
         checkExists('antigravity config skill bridge', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkText('antigravity config ultracode skill', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'ultracode', 'SKILL.md'), [
+          'name: ultracode',
+          'odw_run',
+        ]),
+        checkExists('antigravity config ultracode skill bridge', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
         checkExists('antigravity saved workflow', join(options.home ?? homedir(), '.gemini', 'antigravity', 'global_workflows', 'odw-run.md')),
         checkMcpJson('antigravity gemini mcp config', join(options.home ?? homedir(), '.gemini', 'config', 'mcp_config.json'), 'mcpServers', options),
         checkMcpJson('antigravity cli mcp config', join(options.home ?? homedir(), '.gemini', 'antigravity-cli', 'mcp_config.json'), 'mcpServers', options),
@@ -547,6 +605,11 @@ function checkAntigravityPlugin(label, path, options) {
     checkMcpJson(`${label} mcp config`, join(path, 'mcp_config.json'), 'mcpServers', options),
     checkExists(`${label} skill`, join(path, 'skills', 'odw', 'SKILL.md')),
     checkExists(`${label} skill bridge`, join(path, 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+    checkText(`${label} ultracode skill`, join(path, 'skills', 'ultracode', 'SKILL.md'), [
+      'name: ultracode',
+      'odw_run',
+    ]),
+    checkExists(`${label} ultracode skill bridge`, join(path, 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')),
     checkText(`${label} rule`, join(path, 'rules', 'odw.md'), [
       'odw_run',
       'ultracode',
@@ -596,9 +659,15 @@ function installCodexMarketplace({ home = homedir() } = {}) {
 
 function installAntigravityPlugin({ dest, repoRoot }) {
   copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'plugin'), dest);
-  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), join(dest, 'skills', 'odw'));
-  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'odw', 'scripts'));
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), join(dest, 'skills', 'odw'), repoRoot);
+  copySkillWithBridge(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'ultracode'), join(dest, 'skills', 'ultracode'), repoRoot);
   writeMcpServersJson(join(dest, 'mcp_config.json'), repoRoot);
+  return dest;
+}
+
+function copySkillWithBridge(src, dest, repoRoot) {
+  copyFresh(src, dest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   return dest;
 }
 

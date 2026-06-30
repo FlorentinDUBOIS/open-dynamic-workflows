@@ -2,7 +2,7 @@
   "name": "odw-cursor",
   "version": "0.1.0",
   "private": true,
-  "description": "Cursor Agent skill, subagent, MCP rule, and dashboard integration for Open Dynamic Workflows.",
+  "description": "Cursor Agent ODW/ultracode skills, subagent, MCP rule, and dashboard integration for Open Dynamic Workflows.",
   "type": "commonjs",
   "license": "MIT",
   "scripts": {

@@ -16,6 +16,15 @@ test('canonical Cursor skill exists with frontmatter and daemon steps', () => {
   assert.match(skill, /odw_run/);
 });
 
+test('canonical Cursor ultracode alias skill exists with frontmatter and daemon steps', () => {
+  const skillPath = join(root, 'skills', 'ultracode', 'SKILL.md');
+  const skill = readFileSync(skillPath, 'utf8');
+  assert.match(skill, /^---\r?\nname: ultracode\r?\n/);
+  assert.match(skill, /Cursor Agent/);
+  assert.match(skill, /daemon-bridge\.js --check/);
+  assert.match(skill, /odw_run/);
+});
+
 test('canonical Cursor subagent exists with orchestrator frontmatter', () => {
   const subagentPath = join(root, 'agents', 'odw-orchestrator.md');
   const subagent = readFileSync(subagentPath, 'utf8');

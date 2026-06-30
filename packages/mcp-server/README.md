@@ -22,12 +22,12 @@ Preferred local setup from a clone:
 
 ```bash
 odw-daemon integrate mcp     # writes .mcp.json + AGENTS.md for generic MCP clients
-odw-daemon integrate codex   # writes ~/.codex/config.toml
-odw-daemon integrate cursor  # writes .cursor/mcp.json + a Cursor rule
-odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json + AGENTS.md
+odw-daemon integrate codex   # writes Codex plugin + MCP + ODW/ultracode skills
+odw-daemon integrate cursor  # writes .cursor/mcp.json + rule + ODW/ultracode skills
+odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json + AGENTS.md + ODW/ultracode flows
 odw-daemon integrate gemini  # writes ~/.gemini/settings.json + GEMINI.md
-odw-daemon integrate zed     # writes .zed/settings.json context_servers + AGENTS.md
-odw-daemon integrate antigravity # writes Antigravity mcp_config.json files + skill/workflow
+odw-daemon integrate zed     # writes .zed/settings.json context_servers + ODW/ultracode skills
+odw-daemon integrate antigravity # writes Antigravity mcp_config.json files + ODW/ultracode skills/workflow
 odw-daemon doctor mcp        # verifies the config and daemon health
 ```
 

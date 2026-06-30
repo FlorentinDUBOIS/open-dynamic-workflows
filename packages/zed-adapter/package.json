@@ -2,7 +2,7 @@
   "name": "odw-zed",
   "version": "0.1.0",
   "private": true,
-  "description": "Zed Agent skill for Open Dynamic Workflows.",
+  "description": "Zed Agent ODW and ultracode skills for Open Dynamic Workflows.",
   "type": "module",
   "license": "MIT",
   "scripts": {

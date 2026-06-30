@@ -58,6 +58,13 @@ test('installCursorMcp writes MCP, rule, skill, subagent, and Cursor dashboard e
     assert.match(skill, /daemon-bridge\.js --check/);
     assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
 
+    const ultracodeSkill = readFileSync(join(targetDir, '.cursor', 'skills', 'ultracode', 'SKILL.md'), 'utf8');
+    assert.match(ultracodeSkill, /^---\r?\nname: ultracode\r?\n/);
+    assert.match(ultracodeSkill, /Cursor Agent/);
+    assert.match(ultracodeSkill, /odw_run/);
+    assert.match(ultracodeSkill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
+
     assert.ok(result.subagentPath.replace(/\\/g, '/').endsWith('.cursor/agents/odw-orchestrator.md'));
     const subagent = readFileSync(join(targetDir, '.cursor', 'agents', 'odw-orchestrator.md'), 'utf8');
     assert.match(subagent, /^---\r?\nname: odw-orchestrator\r?\n/);
@@ -120,6 +127,13 @@ test('installKimiMcp writes Kimi Code CLI global MCP config', () => {
     assert.match(skill, /\/flow:odw/);
     assert.match(skill, /daemon-bridge\.js --check/);
     assert.ok(existsSync(join(targetDir, '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+
+    const ultracodeSkill = readFileSync(join(targetDir, '.kimi', 'skills', 'ultracode', 'SKILL.md'), 'utf8');
+    assert.match(ultracodeSkill, /^---\r?\nname: ultracode\r?\n/);
+    assert.match(ultracodeSkill, /type: flow/);
+    assert.match(ultracodeSkill, /\/flow:ultracode/);
+    assert.match(ultracodeSkill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.kimi', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -198,6 +212,13 @@ test('installZedMcp writes project Zed context server settings', () => {
     assert.match(skill, /Zed Agent/);
     assert.match(skill, /daemon-bridge\.js --check/);
     assert.ok(existsSync(join(targetDir, '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+
+    const ultracodeSkill = readFileSync(join(targetDir, '.agents', 'skills', 'ultracode', 'SKILL.md'), 'utf8');
+    assert.match(ultracodeSkill, /^---\r?\nname: ultracode\r?\n/);
+    assert.match(ultracodeSkill, /Zed Agent/);
+    assert.match(ultracodeSkill, /odw_run/);
+    assert.match(ultracodeSkill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
   }
@@ -241,8 +262,10 @@ test('installCodexPlugin installs a Codex plugin bundle and personal marketplace
     assert.equal(result.path, pluginDir);
     assert.ok(existsSync(join(pluginDir, '.codex-plugin', 'plugin.json')));
     assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'SKILL.md')));
+    assert.ok(existsSync(join(pluginDir, 'skills', 'ultracode', 'SKILL.md')));
     assert.ok(existsSync(join(pluginDir, 'scripts', 'daemon-bridge.js')));
     assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+    assert.ok(existsSync(join(pluginDir, 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
 
     const manifest = JSON.parse(readFileSync(join(pluginDir, '.codex-plugin', 'plugin.json'), 'utf8'));
     assert.equal(manifest.mcpServers, './.mcp.json');
@@ -333,6 +356,10 @@ test('installAntigravity wires Gemini and Antigravity MCP configs without clobbe
     assert.equal(result.kind, 'antigravity');
     assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'odw', 'SKILL.md')));
     assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+    assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'ultracode', 'SKILL.md')));
+    assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
+    assert.ok(existsSync(join(home, '.gemini', 'skills', 'ultracode', 'SKILL.md')));
+    assert.ok(existsSync(join(home, '.gemini', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
     assert.ok(result.configSkillPath.replace(/\\/g, '/').endsWith('.gemini/config/skills/odw'));
     assert.ok(result.geminiMcpPath.replace(/\\/g, '/').endsWith('.gemini/config/mcp_config.json'));
     assert.ok(result.antigravityCliMcpPath.replace(/\\/g, '/').endsWith('.gemini/antigravity-cli/mcp_config.json'));
@@ -355,6 +382,8 @@ test('installAntigravity wires Gemini and Antigravity MCP configs without clobbe
       assert.ok(pluginMcp.mcpServers.odw.args[0].includes('mcp-server'));
       assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'SKILL.md')));
       assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+      assert.ok(existsSync(join(pluginDir, 'skills', 'ultracode', 'SKILL.md')));
+      assert.ok(existsSync(join(pluginDir, 'skills', 'ultracode', 'scripts', 'daemon-bridge.js')));
       assert.match(readFileSync(join(pluginDir, 'rules', 'odw.md'), 'utf8'), /odw_run/);
     }
   } finally {
@@ -372,13 +401,50 @@ test('installAgentIntegration copies native skill folders for codex, antigravity
     const openclaw = installAgentIntegration('openclaw', { home, repoRoot });
 
     assert.ok(existsSync(join(home, '.agents', 'skills', 'odw', 'SKILL.md')));
+    assert.ok(existsSync(join(home, '.agents', 'skills', 'ultracode', 'SKILL.md')));
     assert.ok(existsSync(join(home, '.gemini', 'skills', 'odw', 'SKILL.md')));
+    assert.ok(existsSync(join(home, '.gemini', 'skills', 'ultracode', 'SKILL.md')));
     assert.ok(existsSync(join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md')));
     assert.ok(existsSync(join(targetDir, '.agents', 'mcp_config.json')));
     assert.ok(existsSync(join(home, '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md')));
     assert.equal(codex.kind, 'codex-skill');
     assert.equal(antigravity.kind, 'antigravity');
     assert.equal(openclaw.kind, 'openclaw');
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('project-local skill bridges run inside type module projects', () => {
+  const home = tempDir('odw-module-home-');
+  const targetDir = tempDir('odw-module-target-');
+  try {
+    writeFileSync(join(targetDir, 'package.json'), JSON.stringify({ type: 'module' }));
+    installAgentIntegration('all', { home, targetDir, repoRoot });
+
+    for (const bridgePath of [
+      join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+      join(targetDir, '.cursor', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js'),
+      join(targetDir, '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+      join(targetDir, '.kimi', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js'),
+      join(targetDir, '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+      join(targetDir, '.agents', 'skills', 'ultracode', 'scripts', 'daemon-bridge.js'),
+    ]) {
+      assert.throws(
+        () => execFileSync(process.execPath, [bridgePath, '--check'], {
+          encoding: 'utf8',
+          env: { ...process.env, ODW_DAEMON_PORT: '59998' },
+          timeout: 15000,
+        }),
+        (error) => {
+          assert.equal(error.status, 1);
+          assert.match(String(error.stderr), /not reachable|Start it/);
+          assert.doesNotMatch(String(error.stderr), /require is not defined/);
+          return true;
+        }
+      );
+    }
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -420,13 +486,15 @@ test('doctorAgentIntegration reports missing integration files without throwing'
 
     assert.equal(result.kind, 'kimi');
     assert.equal(result.ok, false);
-    assert.equal(result.checks.length, 4);
+    assert.equal(result.checks.length, 6);
     assert.ok(result.checks.every((check) => check.ok === false));
     assert.match(result.checks[0].message, /missing/);
     assert.match(result.checks[0].path, /\.kimi-code/);
     assert.equal(result.checks[1].label, 'kimi agent instructions');
     assert.equal(result.checks[2].label, 'kimi flow skill');
     assert.equal(result.checks[3].label, 'kimi daemon bridge');
+    assert.equal(result.checks[4].label, 'kimi ultracode flow skill');
+    assert.equal(result.checks[5].label, 'kimi ultracode daemon bridge');
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -444,21 +512,26 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.equal(result.ok, true);
     assert.ok(result.checks.length >= 15);
     assert.ok(result.checks.some((check) => check.label === 'kimi mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'codex ultracode skill'));
     assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
     assert.ok(result.checks.some((check) => check.label === 'kimi flow skill'));
+    assert.ok(result.checks.some((check) => check.label === 'kimi ultracode flow skill'));
     assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
     assert.ok(result.checks.some((check) => check.label === 'gemini odw command'));
     assert.ok(result.checks.some((check) => check.label === 'gemini ultracode command'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'zed agent skill'));
+    assert.ok(result.checks.some((check) => check.label === 'zed ultracode agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));
+    assert.ok(result.checks.some((check) => check.label === 'cursor ultracode agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'cursor odw orchestrator subagent'));
     assert.ok(result.checks.some((check) => check.label === 'cursor dashboard extension'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity config skill'));
+    assert.ok(result.checks.some((check) => check.label === 'antigravity config ultracode skill'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity workspace mcp config'));
     assert.ok(result.checks.every((check) => check.ok));

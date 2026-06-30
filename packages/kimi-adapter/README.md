@@ -7,6 +7,7 @@ Kimi Code CLI adapter for Open Dynamic Workflows.
 - Global MCP config at `~/.kimi-code/mcp.json`.
 - Managed project instructions in `AGENTS.md`.
 - A project-local flow skill at `.kimi/skills/odw` so users can run `/flow:odw` or load `/skill:odw` from Kimi Code CLI.
+- A project-local ultracode flow alias at `.kimi/skills/ultracode` so users can run `/flow:ultracode` or load `/skill:ultracode`.
 
 ## Install
 
@@ -18,4 +19,4 @@ odw-daemon doctor kimi
 odw-daemon start
 ```
 
-Restart Kimi Code CLI after installing so it discovers the project flow skill.
+Restart Kimi Code CLI after installing so it discovers the project flow skills.
