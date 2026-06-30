@@ -224,7 +224,47 @@ test('ollama callWithTools: string-form arguments also parse; format applies on 
 
 // ── host ─────────────────────────────────────────────────────────────────────
 
-test('host provider: text-only invoke contract — no callWithTools (queue falls back with tools stripped)', () => {
-  const provider = createHostProvider({ invoke: async () => 'x' });
-  assert.equal(provider.callWithTools, undefined);
+test('host provider: plain-text protocol maps neutral transcript to tool calls', async () => {
+  let captured;
+  const provider = createHostProvider({
+    invoke: async (job) => {
+      captured = job;
+      return { text: '{"text":"reading","toolCalls":[{"id":"h1","name":"read_file","args":{"path":"a.js"}}]}', usage: { input: 9, output: 4 } };
+    },
+  });
+  const res = await provider.callWithTools({
+    model: 'host:default',
+    systemPrompt: 'sys',
+    schema: { type: 'object' },
+    messages: TRANSCRIPT,
+    tools: TOOL_DEFS,
+  });
+  assert.match(captured.prompt, /ODW_TEXT_TOOL_PROTOCOL/);
+  assert.match(captured.prompt, /read_file/);
+  assert.match(captured.prompt, /role=tool/);
+  assert.equal(captured.messages, undefined);
+  assert.equal(captured.tools, undefined);
+  assert.equal(captured.schema, undefined);
+  assert.equal(captured.systemPrompt, undefined);
+  assert.equal(res.text, 'reading');
+  assert.deepEqual(res.toolCalls, [{ id: 'h1', name: 'read_file', args: { path: 'a.js' } }]);
+  assert.deepEqual([res.tokensInput, res.tokensOutput], [9, 4]);
+});
+
+test('host provider: tool-free final turn returns raw text for queue schema validation', async () => {
+  let captured;
+  const provider = createHostProvider({
+    invoke: async (job) => {
+      captured = job;
+      return '{"summary":"done"}';
+    },
+  });
+  const res = await provider.callWithTools({
+    model: 'host:default',
+    schema: { type: 'object' },
+    messages: [{ role: 'user', content: 'Respond with ONLY JSON' }],
+  });
+  assert.doesNotMatch(captured.prompt, /ODW_TEXT_TOOL_PROTOCOL/);
+  assert.equal(res.text, '{"summary":"done"}');
+  assert.equal(res.toolCalls, undefined);
 });

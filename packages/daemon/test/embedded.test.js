@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { mergeStrategy } from 'odw-core';
 
 const { createHostProvider } = await import('../src/providers/host.js');
@@ -31,6 +34,39 @@ test('host provider: uses reported usage when the host provides it', async () =>
   assert.deepEqual([r.tokensInput, r.tokensOutput], [11, 7]);
 });
 
+test('host provider: callWithTools parses text-protocol tool calls for native hosts', async () => {
+  const seen = [];
+  const p = createHostProvider({
+    invoke: async (job) => {
+      seen.push(job);
+      return '{"text":"reading","toolCalls":[{"id":"t1","name":"read_file","args":{"path":"src/a.js"}}]}';
+    },
+  });
+  const result = await p.callWithTools({
+    model: 'host:default',
+    systemPrompt: 'sys',
+    messages: [{ role: 'user', content: 'inspect src/a.js' }],
+    tools: [{ name: 'read_file', description: 'read a file', inputSchema: { type: 'object' } }],
+  });
+  assert.match(seen[0].prompt, /ODW_TEXT_TOOL_PROTOCOL/);
+  assert.match(seen[0].prompt, /read_file/);
+  assert.equal(result.text, 'reading');
+  assert.deepEqual(result.toolCalls, [{ id: 't1', name: 'read_file', args: { path: 'src/a.js' } }]);
+  assert.ok(result.tokensInput > 0);
+  assert.ok(result.tokensOutput > 0);
+});
+
+test('host provider: callWithTools returns final text when no tool call is requested', async () => {
+  const p = createHostProvider({ invoke: async () => '{"text":"final answer"}' });
+  const result = await p.callWithTools({
+    model: 'host:default',
+    messages: [{ role: 'user', content: 'answer now' }],
+    tools: [{ name: 'read_file', description: 'read a file', inputSchema: { type: 'object' } }],
+  });
+  assert.equal(result.text, 'final answer');
+  assert.equal(result.toolCalls, undefined);
+});
+
 test('host provider: requires an invoke function', () => {
   assert.throws(() => createHostProvider({}), /invoke/);
 });
@@ -52,6 +88,37 @@ test('embedded: runs a real orchestration script through the sandbox on the host
   assert.equal(result.a, 'RESULT:alp');
   assert.deepEqual(result.b, ['RESULT:bet', 'RESULT:gam']);
   assert.equal(seen.length, 3, 'all three agent() calls dispatched through the host model');
+});
+
+test('embedded: host-model text protocol executes workflow tools', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'odw-embedded-tools-'));
+  try {
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, 'src', 'a.js'), 'module.exports = 1;', 'utf8');
+    const calls = [];
+    const orch = createEmbeddedOrchestrator({
+      invoke: async (job) => {
+        calls.push(job.prompt);
+        if (calls.length === 1) {
+          return '{"toolCalls":[{"id":"r1","name":"read_file","args":{"path":"src/a.js"}}],"text":"reading"}';
+        }
+        if (calls.length === 2) {
+          assert.match(job.prompt, /module\.exports = 1/);
+          return '{"text":"ready"}';
+        }
+        assert.match(job.prompt, /Respond with ONLY a single JSON object/);
+        return '{"summary":"read module.exports = 1"}';
+      },
+      maxConcurrency: 1,
+    });
+    const { result } = await orch.run(plan(
+      'async function execute(){ return await agent({ prompt: "inspect src/a.js", tools: ["read_file"], schema: { summary: "string" } }); } module.exports={execute};'
+    ), { cwd: root });
+    assert.deepEqual(result, { summary: 'read module.exports = 1' });
+    assert.equal(calls.length, 3, 'one tool-call turn, one synthesis turn, one schema final turn');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('embedded: budget hard-stop trips on ESTIMATED host usage (no unbounded loop — the BLOCKER fix)', async () => {

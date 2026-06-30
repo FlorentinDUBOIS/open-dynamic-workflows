@@ -342,6 +342,13 @@ export function createAgentQueue(options) {
           // plain job: the model's last text IS the output
           return { output: response.text, text: response.text, tokensInput, tokensOutput };
         }
+        const parsed = extractJson(response.text);
+        if (parsed !== undefined) {
+          const verdict = compileSchema(job.schema)(parsed);
+          if (verdict.valid) {
+            return { output: parsed, text: response.text, tokensInput, tokensOutput };
+          }
+        }
         transcript.push({ role: 'assistant', content: response.text || null });
         break;
       }
