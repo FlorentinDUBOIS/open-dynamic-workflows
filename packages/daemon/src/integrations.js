@@ -18,6 +18,8 @@ const MANAGED_BEGIN = '# BEGIN open-dynamic-workflows';
 const MANAGED_END = '# END open-dynamic-workflows';
 const AGENTS_BEGIN = '<!-- BEGIN open-dynamic-workflows -->';
 const AGENTS_END = '<!-- END open-dynamic-workflows -->';
+const GEMINI_BEGIN = '<!-- BEGIN open-dynamic-workflows -->';
+const GEMINI_END = '<!-- END open-dynamic-workflows -->';
 
 export function mcpServerCommand({ repoRoot = DEFAULT_REPO_ROOT } = {}) {
   return {
@@ -45,6 +47,13 @@ export function installKimiMcp({ home = homedir(), targetDir = process.cwd(), re
   const current = writeMcpServersJson(path, repoRoot);
   const instructionsPath = installAgentInstructions({ targetDir, host: 'Kimi Code' });
   return { kind: 'kimi', path, instructionsPath, server: current.mcpServers.odw };
+}
+
+export function installGeminiMcp({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const path = join(home, '.gemini', 'settings.json');
+  const current = writeMcpServersJson(path, repoRoot);
+  const instructionsPath = installGeminiInstructions({ targetDir });
+  return { kind: 'gemini', path, instructionsPath, server: current.mcpServers.odw };
 }
 
 export function installZedMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -146,6 +155,9 @@ export function installAgentIntegration(kind, options = {}) {
     case 'kimi':
     case 'kimi-code':
       return installKimiMcp(options);
+    case 'gemini':
+    case 'gemini-cli':
+      return installGeminiMcp(options);
     case 'zed':
       return installZedMcp(options);
     case 'zcode':
@@ -165,6 +177,7 @@ export function installAgentIntegration(kind, options = {}) {
           installCodexSkill(options),
           installCursorMcp(options),
           installKimiMcp(options),
+          installGeminiMcp(options),
           installZedMcp(options),
           installOpencodePlugin(options),
           installAntigravity(options),
@@ -172,7 +185,7 @@ export function installAgentIntegration(kind, options = {}) {
         ],
       };
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, zed, zcode, opencode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, antigravity, openclaw, all)`);
   }
 }
 
@@ -220,6 +233,12 @@ function doctorChecksFor(kind, options = {}) {
         checkMcpJson('kimi mcp config', join(options.home ?? homedir(), '.kimi-code', 'mcp.json'), 'mcpServers', options),
         checkAgentInstructions('kimi agent instructions', options.targetDir ?? process.cwd()),
       ];
+    case 'gemini':
+    case 'gemini-cli':
+      return [
+        checkMcpJson('gemini mcp config', join(options.home ?? homedir(), '.gemini', 'settings.json'), 'mcpServers', options),
+        checkGeminiInstructions('gemini project instructions', options.targetDir ?? process.cwd()),
+      ];
     case 'zed':
       return [
         checkMcpJson('zed context server config', join(options.targetDir ?? process.cwd(), '.zed', 'settings.json'), 'context_servers', options),
@@ -249,13 +268,14 @@ function doctorChecksFor(kind, options = {}) {
         ...doctorChecksFor('codex', options),
         ...doctorChecksFor('cursor', options),
         ...doctorChecksFor('kimi', options),
+        ...doctorChecksFor('gemini', options),
         ...doctorChecksFor('zed', options),
         ...doctorChecksFor('opencode', options),
         ...doctorChecksFor('antigravity', options),
         ...doctorChecksFor('openclaw', options),
       ];
     default:
-      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, zed, zcode, opencode, antigravity, openclaw, all)`);
+      throw new Error(`unknown integration "${kind}" (valid: mcp, codex, codex-mcp, codex-skill, cursor, kimi, gemini, zed, zcode, opencode, antigravity, openclaw, all)`);
   }
 }
 
@@ -304,6 +324,30 @@ function installCursorRule({ targetDir = process.cwd() } = {}) {
   return path;
 }
 
+function installGeminiInstructions({ targetDir = process.cwd() } = {}) {
+  const path = join(targetDir, 'GEMINI.md');
+  const block = [
+    GEMINI_BEGIN,
+    '## Open Dynamic Workflows',
+    '',
+    'For Gemini CLI, route substantial workflow requests through the ODW MCP server when it is available.',
+    '',
+    'Use ODW when the user says `workflow:`, `ultracode`, `/deep-research`, or asks for broad multi-file work that benefits from planning, parallel agents, verification, or crash-resumable execution.',
+    '',
+    '- Gemini CLI exposes ODW tools with the MCP prefix: `mcp_odw_odw_health`, `mcp_odw_odw_plan`, `mcp_odw_odw_run`, `mcp_odw_odw_status`, `mcp_odw_odw_result`, `mcp_odw_odw_list`, and `mcp_odw_odw_control`.',
+    '- Call `mcp_odw_odw_health` first when uncertain whether the daemon is reachable.',
+    '- Use `mcp_odw_odw_run` (`odw_run`) for direct execution. Use `mcp_odw_odw_plan` (`odw_plan`) first when the user asks to review the plan, the task is expensive, or mutation risk is high.',
+    '- Report the workflow id, topology, agent count, and cost/time estimate instead of redoing the work manually.',
+    '- Use `mcp_odw_odw_status`, `mcp_odw_odw_result`, and `mcp_odw_odw_list` to monitor and summarize running work.',
+    '- If ODW is unavailable, say exactly what is missing (`odw-daemon start` or `odw-daemon doctor gemini`) and then fall back to Gemini-native planning only if useful.',
+    '',
+    GEMINI_END,
+    '',
+  ].join('\n');
+  writeText(path, replaceManagedSection(readText(path, ''), block, GEMINI_BEGIN, GEMINI_END));
+  return path;
+}
+
 function checkMcpJson(label, path, section, options) {
   if (!existsSync(path)) return check(false, label, path, 'missing');
   let json;
@@ -333,6 +377,14 @@ function checkText(label, path, fragments) {
 function checkAgentInstructions(label, targetDir) {
   return checkText(label, join(targetDir, 'AGENTS.md'), [
     AGENTS_BEGIN,
+    'odw_run',
+    'ultracode',
+  ]);
+}
+
+function checkGeminiInstructions(label, targetDir) {
+  return checkText(label, join(targetDir, 'GEMINI.md'), [
+    GEMINI_BEGIN,
     'odw_run',
     'ultracode',
   ]);

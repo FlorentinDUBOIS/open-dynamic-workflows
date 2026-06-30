@@ -12,6 +12,7 @@ import {
   installAntigravity,
   installCodexMcp,
   installCursorMcp,
+  installGeminiMcp,
   installGenericMcpConfig,
   installKimiMcp,
   installOpencodePlugin,
@@ -91,6 +92,43 @@ test('installKimiMcp writes Kimi Code CLI global MCP config', () => {
     assert.equal(data.mcpServers.odw.command, 'node');
     assert.ok(data.mcpServers.odw.args[0].includes('mcp-server'));
     assert.match(readFileSync(join(targetDir, 'AGENTS.md'), 'utf8'), /Kimi Code/);
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('installGeminiMcp writes Gemini CLI settings and project instructions', () => {
+  const home = tempDir('odw-gemini-home-');
+  const targetDir = tempDir('odw-gemini-target-');
+  try {
+    mkdirSync(join(home, '.gemini'), { recursive: true });
+    writeFileSync(join(home, '.gemini', 'settings.json'), JSON.stringify({
+      selectedAuthType: 'oauth-personal',
+      mcpServers: {
+        existing: { command: 'node', args: ['existing.js'] },
+      },
+    }));
+
+    const result = installGeminiMcp({ home, targetDir, repoRoot });
+    installGeminiMcp({ home, targetDir, repoRoot });
+
+    const settings = JSON.parse(readFileSync(join(home, '.gemini', 'settings.json'), 'utf8'));
+    assert.equal(settings.selectedAuthType, 'oauth-personal');
+    assert.deepEqual(Object.keys(settings.mcpServers).sort(), ['existing', 'odw']);
+    assert.equal(settings.mcpServers.odw.command, 'node');
+    assert.ok(settings.mcpServers.odw.args[0].includes('mcp-server'));
+
+    const geminiMd = readFileSync(join(targetDir, 'GEMINI.md'), 'utf8');
+    assert.match(geminiMd, /Gemini CLI/);
+    assert.match(geminiMd, /mcp_odw_odw_run/);
+    assert.match(geminiMd, /odw_run/);
+    assert.match(geminiMd, /ultracode/);
+    assert.equal((geminiMd.match(/BEGIN open-dynamic-workflows/g) ?? []).length, 1);
+
+    assert.equal(result.kind, 'gemini');
+    assert.ok(result.path.replace(/\\/g, '/').endsWith('.gemini/settings.json'));
+    assert.ok(result.instructionsPath.endsWith('GEMINI.md'));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -280,6 +318,8 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.length >= 15);
     assert.ok(result.checks.some((check) => check.label === 'kimi mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
+    assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));

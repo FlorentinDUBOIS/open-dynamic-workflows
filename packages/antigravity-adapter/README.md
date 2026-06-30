@@ -22,7 +22,7 @@ odw-daemon integrate antigravity
 odw-daemon doctor antigravity
 ```
 
-`integrate antigravity` preserves existing MCP servers and adds `mcpServers.odw` to the current Gemini global config, the Antigravity CLI config, and the workspace-local `.agents` config so both IDE and CLI-style hosts can see the ODW tools.
+`integrate antigravity` preserves existing MCP servers and adds `mcpServers.odw` to Antigravity's global config, the Antigravity CLI config, and the workspace-local `.agents` config so both IDE and CLI-style hosts can see the ODW tools. For Gemini CLI's separate `~/.gemini/settings.json` file, run `odw-daemon integrate gemini`.
 
 For 100+ agents and crash-resume, the local daemon still needs to be running:
 

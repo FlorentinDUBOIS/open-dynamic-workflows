@@ -109,6 +109,7 @@ odw-daemon integrate mcp          # writes .mcp.json + AGENTS.md instructions
 odw-daemon integrate codex        # MCP + Codex skill
 odw-daemon integrate cursor       # writes .cursor/mcp.json + Cursor rule
 odw-daemon integrate kimi         # writes ~/.kimi-code/mcp.json + AGENTS.md
+odw-daemon integrate gemini       # writes ~/.gemini/settings.json + GEMINI.md
 odw-daemon integrate zed          # writes .zed/settings.json + AGENTS.md
 odw-daemon integrate zcode        # generic MCP + Zed-style project settings
 odw-daemon integrate opencode     # local OpenCode plugin wrapper + slash commands
@@ -180,7 +181,7 @@ The planner picks the simplest shape that fits the task instead of throwing a sw
 
 ## Inside your agent
 
-For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds a Cursor project rule, `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json` plus `AGENTS.md`, `integrate zed` writes Zed `context_servers` plus `AGENTS.md`, `integrate zcode` writes generic MCP plus Zed-style project settings, and `integrate antigravity` writes Gemini/Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
+For broad agent support, start with `odw-daemon integrate mcp`. It writes a project `.mcp.json` using the common `mcpServers` shape and adds a managed `AGENTS.md` block that tells MCP-capable agents when to use `odw_run`, `odw_plan`, `odw_status`, and `odw_result`. Host-specific MCP installers sit beside it: `integrate cursor` adds a Cursor project rule, `integrate kimi` writes Kimi Code's `~/.kimi-code/mcp.json` plus `AGENTS.md`, `integrate gemini` writes Gemini CLI's `~/.gemini/settings.json` plus `GEMINI.md`, `integrate zed` writes Zed `context_servers` plus `AGENTS.md`, `integrate zcode` writes generic MCP plus Zed-style project settings, and `integrate antigravity` writes Antigravity MCP configs at `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and `.agents/mcp_config.json`.
 
 Run `odw-daemon doctor <agent>` after setup to check both sides of the handshake: the expected agent config files exist and point at this checkout, and the local daemon is reachable. It exits non-zero with a specific missing file or daemon-start hint when something is not ready.
 
@@ -193,15 +194,16 @@ The adapters are how your existing tool drives the engine. The easiest default i
 | --- | --- | --- |
 | **Generic MCP hosts** | `odw-daemon integrate mcp` writes `.mcp.json` plus managed `AGENTS.md` instructions for clients that import the common `mcpServers` JSON shape | **No** - MCP is a tool bridge, not host-model execution |
 | **Kimi Code CLI** | `odw-daemon integrate kimi` writes `~/.kimi-code/mcp.json` plus managed `AGENTS.md` instructions | **No** - same MCP bridge |
+| **Gemini CLI** | `odw-daemon integrate gemini` writes `~/.gemini/settings.json` `mcpServers.odw` plus managed `GEMINI.md` instructions that name Gemini's `mcp_odw_*` tool aliases | **No** - same MCP bridge |
 | **Zed / zcode-style clients** | `odw-daemon integrate zed` writes `.zed/settings.json` `context_servers` plus managed `AGENTS.md`; `integrate zcode` writes both generic `.mcp.json` and Zed-style settings | **No** - same MCP bridge |
 | **Codex** | `odw-daemon integrate codex` installs both MCP (`~/.codex/config.toml`) and the `odw` skill (`~/.agents/skills/odw`) | **No** — Codex exposes MCP/tools and skills, but no extension API to invoke the host model; full ODW uses the daemon |
 | **Cursor / MCP hosts** | `odw-daemon integrate cursor` writes `.cursor/mcp.json` plus a Cursor project rule; other MCP clients can use the same `node packages/mcp-server/src/index.js` command | **No** — MCP is a tool bridge, not host-model execution |
 | **OpenCode** | `odw-daemon integrate opencode` writes a local plugin wrapper and `/ultracode` + `/workflows` commands | **Yes — validated live on OpenCode 1.2.27**: runs ODW's real engine *through* OpenCode's own model via the plugin SDK (`session.prompt`); a full multi-agent run completed in 93 real round-trips. No daemon, no extra key. (Daemon optional for 100-way fan-out + crash-resume. `ODW_HOST_MODEL=provider/model` pins the agent model; `ODW_DEBUG=1` for diagnostics.) |
-| **Antigravity** | `odw-daemon integrate antigravity` writes Gemini/Antigravity MCP configs (`~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `.agents/mcp_config.json`) plus the `odw` skill and saved `/odw-run` workflow | **No** — Antigravity exposes MCP/tools, skills, and saved workflows, but no documented model API to invoke the host model; full ODW uses the daemon |
+| **Antigravity** | `odw-daemon integrate antigravity` writes Antigravity MCP configs (`~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `.agents/mcp_config.json`) plus the `odw` skill and saved `/odw-run` workflow | **No** — Antigravity exposes MCP/tools, skills, and saved workflows, but no documented model API to invoke the host model; full ODW uses the daemon |
 | **OpenClaw** | `odw-daemon integrate openclaw` installs the ClawHub-format skill | **No** — the skill is a thin client over the daemon API |
 | **VS Code** | extension: a sidebar of live workflows, a dashboard webview, a status bar that spins while agents run (loads in Antigravity unchanged) | n/a (UI client over the daemon API) |
 
-Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex, Cursor, Kimi/Zed-style MCP clients, and similar hosts are best served by the MCP bridge today. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — MCP, skills, `AGENTS.md`, saved workflows — and say so out loud rather than pretend to be keyless.
+Honest note: only OpenCode currently lets a plugin invoke the host's configured model, so it's the only platform where ODW is truly seamless and keyless. Codex, Cursor, Kimi/Gemini/Zed-style MCP clients, and similar hosts are best served by the MCP bridge today. Antigravity locks model access to its internal engine; and MCP "sampling" (the one cross-host hook) is deprecated and unsupported by these mainstream coding harnesses. Those adapters use the extension points those tools actually have — MCP, skills, `AGENTS.md`, `GEMINI.md`, saved workflows — and say so out loud rather than pretend to be keyless.
 
 ---
 
@@ -254,7 +256,7 @@ Runnable examples live in [`examples/workflows/`](examples/workflows): a securit
 |---|---|---|---|
 | Orchestrator | a generated JS script | a generated JS script | the LLM, turn by turn |
 | Runs on | your machine | a vendor's cloud | your machine |
-| Works in | OpenCode, Codex, Antigravity, VS Code, shell | one vendor's tool | wherever it's built in |
+| Works in | OpenCode, Codex, Gemini CLI, Antigravity, VS Code, shell | one vendor's tool | wherever it's built in |
 | Parallel agents | up to your hardware (default 16) | yes | a handful before context fills |
 | Crash-resume | yes (SQLite + WAL) | yes | no |
 | Adversarial verification | built in | built in | you bolt it on |
@@ -286,7 +288,7 @@ Yes. It replicates the same script-as-orchestrator architecture — the model wr
 <details>
 <summary><b>Which AI coding agents does it work with?</b></summary>
 <br>
-OpenCode (plugin), OpenAI Codex (skill + bridge), Google Antigravity (MCP + skill + saved workflow), VS Code (extension), and any shell via the <code>odw-daemon</code> CLI. The daemon is the engine; each adapter is a thin client over its local HTTP API.
+OpenCode (plugin), OpenAI Codex (skill + bridge), Gemini CLI (MCP + GEMINI.md), Google Antigravity (MCP + skill + saved workflow), VS Code (extension), and any shell via the <code>odw-daemon</code> CLI. The daemon is the engine; each adapter is a thin client over its local HTTP API.
 </details>
 
 <details>
@@ -342,4 +344,4 @@ MIT — take it, fork it, ship it. See [LICENSE](LICENSE).
 
 ---
 
-<sub>Open-source multi-agent orchestration / dynamic workflows engine for AI coding agents — a local-first, MIT-licensed alternative to proprietary "dynamic workflows" and "ultracode", for OpenCode, OpenAI Codex, Google Antigravity, and VS Code. Script-driven agent swarms · QuickJS-WASM sandbox · adversarial verification · bring-your-own-model (Anthropic, OpenAI, or local via Ollama).</sub>
+<sub>Open-source multi-agent orchestration / dynamic workflows engine for AI coding agents — a local-first, MIT-licensed alternative to proprietary "dynamic workflows" and "ultracode", for OpenCode, OpenAI Codex, Gemini CLI, Google Antigravity, and VS Code. Script-driven agent swarms · QuickJS-WASM sandbox · adversarial verification · bring-your-own-model (Anthropic, OpenAI, or local via Ollama).</sub>

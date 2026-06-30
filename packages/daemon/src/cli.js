@@ -345,7 +345,7 @@ program
 program
   .command('integrate')
   .description('install ODW into an agentic coder (MCP, skill, or native plugin)')
-  .argument('<agent>', 'mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw|all')
+  .argument('<agent>', 'mcp|codex|cursor|kimi|gemini|zed|zcode|opencode|antigravity|openclaw|all')
   .option('--target <dir>', 'project directory for project-local configs', process.cwd())
   .option('--home <dir>', 'home directory for user-level configs', homedir())
   .option('--repo <dir>', 'open-dynamic-workflows checkout to point adapters at')
@@ -367,7 +367,7 @@ program
 program
   .command('doctor')
   .description('check daemon readiness and installed agent integration files')
-  .argument('[agent]', 'mcp|codex|cursor|kimi|zed|zcode|opencode|antigravity|openclaw|all', 'all')
+  .argument('[agent]', 'mcp|codex|cursor|kimi|gemini|zed|zcode|opencode|antigravity|openclaw|all', 'all')
   .option('--target <dir>', 'project directory for project-local configs', process.cwd())
   .option('--home <dir>', 'home directory for user-level configs', homedir())
   .option('--repo <dir>', 'open-dynamic-workflows checkout integrations should point at')

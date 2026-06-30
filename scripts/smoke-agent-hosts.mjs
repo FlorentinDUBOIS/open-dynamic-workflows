@@ -44,6 +44,8 @@ try {
     join(home, '.codex', 'config.toml'),
     join(home, '.agents', 'skills', 'odw', 'SKILL.md'),
     join(home, '.kimi-code', 'mcp.json'),
+    join(home, '.gemini', 'settings.json'),
+    join(targetDir, 'GEMINI.md'),
     join(home, '.gemini', 'config', 'mcp_config.json'),
     join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'),
     join(home, '.gemini', 'skills', 'odw', 'SKILL.md'),
@@ -105,6 +107,7 @@ async function probeHosts() {
     { name: 'opencode', command: 'opencode', args: ['--version'] },
     { name: 'cursor', command: 'cursor', args: ['--version'] },
     { name: 'kimi', command: 'kimi', args: ['--version'] },
+    { name: 'gemini', command: 'gemini', args: ['--version'] },
     { name: 'zed', command: 'zed', args: ['--version'] },
     { name: 'zcode', command: 'zcode', args: ['--version'] },
   ];
