@@ -142,6 +142,10 @@ export function installAntigravity({ home = homedir(), targetDir = process.cwd()
   copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), skillDest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(skillDest, 'scripts'));
 
+  const configSkillDest = join(home, '.gemini', 'config', 'skills', 'odw');
+  copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), configSkillDest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(configSkillDest, 'scripts'));
+
   const workflowDest = join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md');
   ensureDir(dirname(workflowDest));
   cpSync(join(repoRoot, 'packages', 'antigravity-adapter', 'workflows', 'odw-run.md'), workflowDest);
@@ -156,6 +160,7 @@ export function installAntigravity({ home = homedir(), targetDir = process.cwd()
   return {
     kind: 'antigravity',
     skillPath: skillDest,
+    configSkillPath: configSkillDest,
     workflowPath: workflowDest,
     geminiMcpPath,
     antigravityCliMcpPath,
@@ -363,6 +368,8 @@ function doctorChecksFor(kind, options = {}) {
     case 'antigravity':
       return [
         checkExists('antigravity skill', join(options.home ?? homedir(), '.gemini', 'skills', 'odw', 'SKILL.md')),
+        checkExists('antigravity config skill', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'SKILL.md')),
+        checkExists('antigravity config skill bridge', join(options.home ?? homedir(), '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
         checkExists('antigravity saved workflow', join(options.home ?? homedir(), '.gemini', 'antigravity', 'global_workflows', 'odw-run.md')),
         checkMcpJson('antigravity gemini mcp config', join(options.home ?? homedir(), '.gemini', 'config', 'mcp_config.json'), 'mcpServers', options),
         checkMcpJson('antigravity cli mcp config', join(options.home ?? homedir(), '.gemini', 'antigravity-cli', 'mcp_config.json'), 'mcpServers', options),

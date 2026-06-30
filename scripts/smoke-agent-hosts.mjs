@@ -62,6 +62,8 @@ try {
     join(targetDir, '.gemini', 'commands', 'ultracode.toml'),
     join(home, '.gemini', 'config', 'mcp_config.json'),
     join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'),
+    join(home, '.gemini', 'config', 'skills', 'odw', 'SKILL.md'),
+    join(home, '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
     join(home, '.gemini', 'skills', 'odw', 'SKILL.md'),
     join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md'),
     join(targetDir, '.agents', 'mcp_config.json'),

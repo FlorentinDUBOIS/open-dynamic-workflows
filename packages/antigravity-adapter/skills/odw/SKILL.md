@@ -6,7 +6,8 @@ description: Dynamic multi-agent workflows — plan first, then orchestrate para
 # Open Dynamic Workflows (Antigravity)
 
 Same canonical skill as the Codex adapter — only the install path differs
-(`~/.gemini/skills/odw/`). The bridge scripts live next to this skill in `scripts/`.
+(`~/.gemini/config/skills/odw/`, with `~/.gemini/skills/odw/` kept as a legacy fallback).
+The bridge scripts live next to this skill in `scripts/`.
 
 ## Model & API key (read this first)
 

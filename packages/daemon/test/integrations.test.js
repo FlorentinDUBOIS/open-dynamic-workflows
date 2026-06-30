@@ -318,9 +318,15 @@ test('installAntigravity wires Gemini and Antigravity MCP configs without clobbe
     assert.equal(workspace.mcpServers.odw.command, 'node');
 
     assert.equal(result.kind, 'antigravity');
+    assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'odw', 'SKILL.md')));
+    assert.ok(existsSync(join(home, '.gemini', 'config', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+    assert.ok(result.configSkillPath.replace(/\\/g, '/').endsWith('.gemini/config/skills/odw'));
     assert.ok(result.geminiMcpPath.replace(/\\/g, '/').endsWith('.gemini/config/mcp_config.json'));
     assert.ok(result.antigravityCliMcpPath.replace(/\\/g, '/').endsWith('.gemini/antigravity-cli/mcp_config.json'));
     assert.ok(result.workspaceMcpPath.replace(/\\/g, '/').endsWith('.agents/mcp_config.json'));
+
+    const workflow = readFileSync(join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md'), 'utf8');
+    assert.match(workflow, /\.gemini\/config\/skills\/odw\/scripts\/daemon-bridge\.js/);
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -420,6 +426,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'antigravity config skill'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity workspace mcp config'));
     assert.ok(result.checks.every((check) => check.ok));
