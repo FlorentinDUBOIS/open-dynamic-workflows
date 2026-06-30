@@ -121,6 +121,55 @@ test('embedded: host-model text protocol executes workflow tools', async () => {
   }
 });
 
+test('embedded: runs twenty tool-capable host agents concurrently', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'odw-embedded-20-'));
+  try {
+    mkdirSync(join(root, 'sample'), { recursive: true });
+    for (let i = 1; i <= 20; i++) {
+      writeFileSync(join(root, 'sample', `item-${i}.txt`), `item ${i}: value-${i}`, 'utf8');
+    }
+
+    let active = 0;
+    let maxActive = 0;
+    const orch = createEmbeddedOrchestrator({
+      invoke: async (job) => {
+        active++;
+        maxActive = Math.max(maxActive, active);
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          const prompt = job.prompt;
+          const content = prompt.match(/item (\d+): value-(\d+)/);
+          if (content) {
+            return `{"id":${content[1]},"value":"value-${content[2]}"}`;
+          }
+          const request = prompt.match(/inspect sample\/item-(\d+)\.txt/);
+          if (request) {
+            return `{"text":"reading","toolCalls":[{"id":"read-${request[1]}","name":"read_file","args":{"path":"sample/item-${request[1]}.txt"}}]}`;
+          }
+          return '{"id":0,"value":"unknown"}';
+        } finally {
+          active--;
+        }
+      },
+      maxConcurrency: 20,
+    });
+
+    const { status, result } = await orch.run(plan(
+      'async function execute(){ const ids = Array.from({ length: 20 }, (_, i) => i + 1); ' +
+      'const rows = await parallel(ids.map((id) => () => agent({ prompt: "inspect sample/item-" + id + ".txt", tools: ["read_file"], schema: { id: "number", value: "string" } }))); ' +
+      'return rows.sort((a, b) => a.id - b.id); } module.exports={execute};'
+    ), { cwd: root });
+
+    assert.equal(status, 'completed');
+    assert.equal(result.length, 20);
+    assert.deepEqual(result[0], { id: 1, value: 'value-1' });
+    assert.deepEqual(result[19], { id: 20, value: 'value-20' });
+    assert.equal(maxActive, 20, 'all twenty host calls can be in flight under maxConcurrency=20');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('embedded: budget hard-stop trips on ESTIMATED host usage (no unbounded loop — the BLOCKER fix)', async () => {
   const orch = createEmbeddedOrchestrator({
     invoke: async () => 'x'.repeat(4000), // ~1000 estimated output tokens/call
