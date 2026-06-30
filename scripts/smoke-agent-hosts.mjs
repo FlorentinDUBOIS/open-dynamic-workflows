@@ -44,7 +44,11 @@ try {
     join(home, '.codex', 'config.toml'),
     join(home, '.agents', 'skills', 'odw', 'SKILL.md'),
     join(home, '.kimi-code', 'mcp.json'),
+    join(home, '.gemini', 'config', 'mcp_config.json'),
+    join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'),
     join(home, '.gemini', 'skills', 'odw', 'SKILL.md'),
+    join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md'),
+    join(targetDir, '.agents', 'mcp_config.json'),
     join(home, '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md'),
   ];
   const missing = report.generatedFiles.filter((file) => !existsSync(file));

@@ -79,7 +79,7 @@ export function installCodexSkill({ home = homedir(), repoRoot = DEFAULT_REPO_RO
   return { kind: 'codex-skill', path: dest };
 }
 
-export function installAntigravity({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installAntigravity({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const skillDest = join(home, '.gemini', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'antigravity-adapter', 'skills', 'odw'), skillDest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(skillDest, 'scripts'));
@@ -87,7 +87,22 @@ export function installAntigravity({ home = homedir(), repoRoot = DEFAULT_REPO_R
   const workflowDest = join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md');
   ensureDir(dirname(workflowDest));
   cpSync(join(repoRoot, 'packages', 'antigravity-adapter', 'workflows', 'odw-run.md'), workflowDest);
-  return { kind: 'antigravity', skillPath: skillDest, workflowPath: workflowDest };
+
+  const geminiMcpPath = join(home, '.gemini', 'config', 'mcp_config.json');
+  const antigravityCliMcpPath = join(home, '.gemini', 'antigravity-cli', 'mcp_config.json');
+  const workspaceMcpPath = join(targetDir, '.agents', 'mcp_config.json');
+  writeMcpServersJson(geminiMcpPath, repoRoot);
+  writeMcpServersJson(antigravityCliMcpPath, repoRoot);
+  writeMcpServersJson(workspaceMcpPath, repoRoot);
+
+  return {
+    kind: 'antigravity',
+    skillPath: skillDest,
+    workflowPath: workflowDest,
+    geminiMcpPath,
+    antigravityCliMcpPath,
+    workspaceMcpPath,
+  };
 }
 
 export function installOpenClaw({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -222,6 +237,9 @@ function doctorChecksFor(kind, options = {}) {
       return [
         checkExists('antigravity skill', join(options.home ?? homedir(), '.gemini', 'skills', 'odw', 'SKILL.md')),
         checkExists('antigravity saved workflow', join(options.home ?? homedir(), '.gemini', 'antigravity', 'global_workflows', 'odw-run.md')),
+        checkMcpJson('antigravity gemini mcp config', join(options.home ?? homedir(), '.gemini', 'config', 'mcp_config.json'), 'mcpServers', options),
+        checkMcpJson('antigravity cli mcp config', join(options.home ?? homedir(), '.gemini', 'antigravity-cli', 'mcp_config.json'), 'mcpServers', options),
+        checkMcpJson('antigravity workspace mcp config', join(options.targetDir ?? process.cwd(), '.agents', 'mcp_config.json'), 'mcpServers', options),
       ];
     case 'openclaw':
       return [checkExists('openclaw skill', join(options.home ?? homedir(), '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md'))];

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   doctorAgentIntegration,
   installAgentIntegration,
+  installAntigravity,
   installCodexMcp,
   installCursorMcp,
   installGenericMcpConfig,
@@ -154,21 +155,69 @@ test('installOpencodePlugin writes a local plugin wrapper and slash commands', (
   }
 });
 
+test('installAntigravity wires Gemini and Antigravity MCP configs without clobbering existing servers', () => {
+  const home = tempDir('odw-antigravity-home-');
+  const targetDir = tempDir('odw-antigravity-target-');
+  try {
+    mkdirSync(join(home, '.gemini', 'config'), { recursive: true });
+    writeFileSync(join(home, '.gemini', 'config', 'mcp_config.json'), JSON.stringify({
+      theme: 'dark',
+      mcpServers: {
+        existing: { command: 'node', args: ['existing.js'] },
+      },
+    }));
+    mkdirSync(join(targetDir, '.agents'), { recursive: true });
+    writeFileSync(join(targetDir, '.agents', 'mcp_config.json'), JSON.stringify({
+      mcpServers: {
+        local: { command: 'node', args: ['local.js'] },
+      },
+    }));
+
+    const result = installAntigravity({ home, targetDir, repoRoot });
+    installAntigravity({ home, targetDir, repoRoot });
+
+    const gemini = JSON.parse(readFileSync(join(home, '.gemini', 'config', 'mcp_config.json'), 'utf8'));
+    assert.equal(gemini.theme, 'dark');
+    assert.deepEqual(Object.keys(gemini.mcpServers).sort(), ['existing', 'odw']);
+    assert.equal(gemini.mcpServers.odw.command, 'node');
+    assert.ok(gemini.mcpServers.odw.args[0].includes('mcp-server'));
+
+    const antigravityCli = JSON.parse(readFileSync(join(home, '.gemini', 'antigravity-cli', 'mcp_config.json'), 'utf8'));
+    assert.deepEqual(Object.keys(antigravityCli.mcpServers), ['odw']);
+    assert.equal(antigravityCli.mcpServers.odw.command, 'node');
+
+    const workspace = JSON.parse(readFileSync(join(targetDir, '.agents', 'mcp_config.json'), 'utf8'));
+    assert.deepEqual(Object.keys(workspace.mcpServers).sort(), ['local', 'odw']);
+    assert.equal(workspace.mcpServers.odw.command, 'node');
+
+    assert.equal(result.kind, 'antigravity');
+    assert.ok(result.geminiMcpPath.replace(/\\/g, '/').endsWith('.gemini/config/mcp_config.json'));
+    assert.ok(result.antigravityCliMcpPath.replace(/\\/g, '/').endsWith('.gemini/antigravity-cli/mcp_config.json'));
+    assert.ok(result.workspaceMcpPath.replace(/\\/g, '/').endsWith('.agents/mcp_config.json'));
+  } finally {
+    rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
 test('installAgentIntegration copies native skill folders for codex, antigravity, and openclaw', () => {
   const home = tempDir('odw-skills-');
+  const targetDir = tempDir('odw-skills-target-');
   try {
     const codex = installAgentIntegration('codex-skill', { home, repoRoot });
-    const antigravity = installAgentIntegration('antigravity', { home, repoRoot });
+    const antigravity = installAgentIntegration('antigravity', { home, targetDir, repoRoot });
     const openclaw = installAgentIntegration('openclaw', { home, repoRoot });
 
     assert.ok(existsSync(join(home, '.agents', 'skills', 'odw', 'SKILL.md')));
     assert.ok(existsSync(join(home, '.gemini', 'skills', 'odw', 'SKILL.md')));
     assert.ok(existsSync(join(home, '.gemini', 'antigravity', 'global_workflows', 'odw-run.md')));
+    assert.ok(existsSync(join(targetDir, '.agents', 'mcp_config.json')));
     assert.ok(existsSync(join(home, '.openclaw', 'skills', 'open-dynamic-workflows', 'SKILL.md')));
     assert.equal(codex.kind, 'codex-skill');
     assert.equal(antigravity.kind, 'antigravity');
     assert.equal(openclaw.kind, 'openclaw');
   } finally {
+    rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -233,6 +282,9 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
+    assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));
+    assert.ok(result.checks.some((check) => check.label === 'antigravity workspace mcp config'));
     assert.ok(result.checks.every((check) => check.ok));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });

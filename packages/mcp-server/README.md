@@ -26,10 +26,11 @@ odw-daemon integrate codex   # writes ~/.codex/config.toml
 odw-daemon integrate cursor  # writes .cursor/mcp.json + a Cursor rule
 odw-daemon integrate kimi    # writes ~/.kimi-code/mcp.json + AGENTS.md
 odw-daemon integrate zed     # writes .zed/settings.json context_servers + AGENTS.md
+odw-daemon integrate antigravity # writes Gemini/Antigravity mcp_config.json files + skill/workflow
 odw-daemon doctor mcp        # verifies the config and daemon health
 ```
 
-Generic MCP clients (`.mcp.json`), Kimi Code (`~/.kimi-code/mcp.json`), Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape. The installer also writes small local instructions (`AGENTS.md` or a Cursor rule) so `workflow:`, `ultracode`, and `/deep-research` requests naturally route to the ODW tools.
+Generic MCP clients (`.mcp.json`), Kimi Code (`~/.kimi-code/mcp.json`), Gemini/Antigravity (`~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, `.agents/mcp_config.json`), Claude Desktop (`claude_desktop_config.json`), Cursor (`.cursor/mcp.json`) and Codex (`~/.codex/config.toml` MCP section) all accept the same command shape. The installer also writes small local instructions (`AGENTS.md`, a Cursor rule, or native skills/workflows) so `workflow:`, `ultracode`, and `/deep-research` requests naturally route to the ODW tools.
 
 ```json
 {

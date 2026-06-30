@@ -4,22 +4,32 @@ Google Antigravity adapter for open-dynamic-workflows.
 
 ## What this actually is
 
-Antigravity's supported extension points are **skills** (`~/.gemini/skills/`), **saved workflows** (`~/.gemini/antigravity/global_workflows/`), **MCP servers**, and — since it is a VS Code fork — **VS Code extensions**. This adapter ships:
+Antigravity's supported extension points are skills (`~/.gemini/skills/`), saved workflows (`~/.gemini/antigravity/global_workflows/`), MCP servers, and, since it is a VS Code fork, VS Code extensions. This adapter ships:
 
-- `skills/odw/SKILL.md` — canonical odw skill (same format as the Codex adapter)
-- `workflows/odw-run.md` — a saved `/odw-run` workflow
-- the `odw-vscode` extension from this monorepo installs in Antigravity unchanged and provides the live dashboard
+- `skills/odw/SKILL.md`: canonical ODW skill, using the same bridge script style as the Codex adapter.
+- `workflows/odw-run.md`: a saved `/odw-run` workflow.
+- MCP config installers for `~/.gemini/config/mcp_config.json`, `~/.gemini/antigravity-cli/mcp_config.json`, and workspace `.agents/mcp_config.json`.
+- The `odw-vscode` extension from this monorepo, which installs in Antigravity unchanged and provides the live dashboard.
 
-There is **no official Antigravity automation API**; community CDP bridges exist but are unofficial, so this adapter deliberately does not depend on one.
+There is no official Antigravity automation API. Community CDP bridges exist but are unofficial, so this adapter deliberately does not depend on one.
 
 ## Install
 
-```bash
-mkdir -p ~/.gemini/skills/odw
-cp -r skills/odw/* ~/.gemini/skills/odw/
-cp -r ../codex-adapter/scripts ~/.gemini/skills/odw/scripts   # shared bridge
-cp workflows/odw-run.md ~/.gemini/antigravity/global_workflows/
+From the repository root:
 
-# optional, for 100+ agents + crash-resume (install from GitHub; not yet on npm):
-git clone https://github.com/Suraj1235/open-dynamic-workflows && cd open-dynamic-workflows && npm install && npm run setup && odw-daemon start
+```bash
+odw-daemon integrate antigravity
+odw-daemon doctor antigravity
+```
+
+`integrate antigravity` preserves existing MCP servers and adds `mcpServers.odw` to the current Gemini global config, the Antigravity CLI config, and the workspace-local `.agents` config so both IDE and CLI-style hosts can see the ODW tools.
+
+For 100+ agents and crash-resume, the local daemon still needs to be running:
+
+```bash
+git clone https://github.com/Suraj1235/open-dynamic-workflows
+cd open-dynamic-workflows
+npm install
+npm run setup
+odw-daemon start
 ```
