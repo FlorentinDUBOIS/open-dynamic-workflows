@@ -28,12 +28,13 @@ export function mcpServerCommand({ repoRoot = DEFAULT_REPO_ROOT } = {}) {
   };
 }
 
-export function installCursorMcp({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+export function installCursorMcp({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const path = join(targetDir, '.cursor', 'mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
   const rulePath = installCursorRule({ targetDir });
   const skillPath = installCursorSkill({ targetDir, repoRoot });
-  return { kind: 'cursor', path, rulePath, skillPath, server: current.mcpServers.odw };
+  const extensionPath = installEditorExtension({ home, repoRoot, profileDir: '.cursor' }).path;
+  return { kind: 'cursor', path, rulePath, skillPath, extensionPath, server: current.mcpServers.odw };
 }
 
 export function installGenericMcpConfig({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -194,11 +195,7 @@ export function installOpencodePlugin({ targetDir = process.cwd(), repoRoot = DE
 }
 
 export function installVscodeExtension({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
-  const src = join(repoRoot, 'packages', 'vscode-extension');
-  const manifest = readJson(join(src, 'package.json'), {});
-  const extensionId = `${manifest.publisher}.${manifest.name}-${manifest.version}`;
-  const dest = join(home, '.vscode', 'extensions', extensionId);
-  copyFresh(src, dest);
+  const { path: dest } = installEditorExtension({ home, repoRoot, profileDir: '.vscode' });
   return { kind: 'vscode', path: dest };
 }
 
@@ -310,6 +307,8 @@ function doctorChecksFor(kind, options = {}) {
         ]),
         checkExists('cursor agent skill', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'SKILL.md')),
         checkExists('cursor daemon bridge', join(options.targetDir ?? process.cwd(), '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
+        checkExists('cursor dashboard extension', join(editorExtensionPath({ ...options, profileDir: '.cursor' }), 'package.json')),
+        checkExists('cursor dashboard entrypoint', join(editorExtensionPath({ ...options, profileDir: '.cursor' }), 'extension.js')),
       ];
     case 'kimi':
     case 'kimi-code':
@@ -562,10 +561,20 @@ function codexMarketplacePath(options = {}) {
   return join(options.home ?? homedir(), '.agents', 'plugins', 'marketplace.json');
 }
 
-function vscodeExtensionPath(options = {}) {
+function installEditorExtension({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT, profileDir }) {
+  const dest = editorExtensionPath({ home, repoRoot, profileDir });
+  copyFresh(join(repoRoot, 'packages', 'vscode-extension'), dest);
+  return { path: dest };
+}
+
+function editorExtensionPath(options = {}) {
   const repoRoot = options.repoRoot ?? DEFAULT_REPO_ROOT;
   const manifest = readJson(join(repoRoot, 'packages', 'vscode-extension', 'package.json'), {});
-  return join(options.home ?? homedir(), '.vscode', 'extensions', `${manifest.publisher}.${manifest.name}-${manifest.version}`);
+  return join(options.home ?? homedir(), options.profileDir, 'extensions', `${manifest.publisher}.${manifest.name}-${manifest.version}`);
+}
+
+function vscodeExtensionPath(options = {}) {
+  return editorExtensionPath({ ...options, profileDir: '.vscode' });
 }
 
 function objectOrEmpty(value) {

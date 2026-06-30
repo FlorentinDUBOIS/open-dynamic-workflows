@@ -34,11 +34,12 @@ test('mcpServerCommand points every MCP host at the local ODW MCP server', () =>
   assert.ok(command.args[0].endsWith('packages/mcp-server/src/index.js'));
 });
 
-test('installCursorMcp writes an idempotent .cursor/mcp.json with an odw server', () => {
+test('installCursorMcp writes MCP, rule, skill, and Cursor dashboard extension', () => {
+  const home = tempDir('odw-cursor-home-');
   const targetDir = tempDir('odw-cursor-');
   try {
-    installCursorMcp({ targetDir, repoRoot });
-    installCursorMcp({ targetDir, repoRoot });
+    const result = installCursorMcp({ home, targetDir, repoRoot });
+    installCursorMcp({ home, targetDir, repoRoot });
 
     const path = join(targetDir, '.cursor', 'mcp.json');
     const data = JSON.parse(readFileSync(path, 'utf8'));
@@ -56,8 +57,13 @@ test('installCursorMcp writes an idempotent .cursor/mcp.json with an odw server'
     assert.match(skill, /Cursor Agent/);
     assert.match(skill, /daemon-bridge\.js --check/);
     assert.ok(existsSync(join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
+
+    assert.ok(result.extensionPath.replace(/\\/g, '/').endsWith('.cursor/extensions/open-dynamic-workflows.odw-vscode-0.1.0'));
+    assert.ok(existsSync(join(home, '.cursor', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'package.json')));
+    assert.ok(existsSync(join(home, '.cursor', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'extension.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });
 
@@ -425,6 +431,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));
+    assert.ok(result.checks.some((check) => check.label === 'cursor dashboard extension'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity config skill'));
     assert.ok(result.checks.some((check) => check.label === 'antigravity cli mcp config'));

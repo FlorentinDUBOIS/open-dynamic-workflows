@@ -40,6 +40,8 @@ try {
     join(targetDir, '.cursor', 'rules', 'open-dynamic-workflows.mdc'),
     join(targetDir, '.cursor', 'skills', 'odw', 'SKILL.md'),
     join(targetDir, '.cursor', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
+    join(home, '.cursor', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'package.json'),
+    join(home, '.cursor', 'extensions', 'open-dynamic-workflows.odw-vscode-0.1.0', 'extension.js'),
     join(targetDir, '.zed', 'settings.json'),
     join(targetDir, '.agents', 'skills', 'odw', 'SKILL.md'),
     join(targetDir, '.agents', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
