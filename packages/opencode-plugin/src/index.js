@@ -161,6 +161,7 @@ export function writeUltracode(directory, enabled) {
 // ── message helpers ──────────────────────────────────────────────────────────
 
 const INSTALL_HINT = 'install from github.com/Suraj1235/open-dynamic-workflows (clone, npm install, npm run setup), then: odw-daemon start';
+const DEFAULT_EMBEDDED_MAX_AGENTS = 20;
 
 function planSummary(plan) {
   const e = plan.estimate ?? {};
@@ -179,8 +180,9 @@ function positiveInt(value) {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-function planOptions(args = {}) {
-  const maxAgents = positiveInt(args.maxAgents ?? process.env.ODW_MAX_AGENTS);
+function planOptions(args = {}, defaults = {}) {
+  const explicitMaxAgents = positiveInt(args.maxAgents ?? process.env.ODW_MAX_AGENTS);
+  const maxAgents = explicitMaxAgents ?? positiveInt(defaults.maxAgents);
   return maxAgents ? { maxAgents } : {};
 }
 
@@ -226,7 +228,10 @@ async function runEmbedded(client, effective, directory, options = {}) {
   try {
     const startedAt = Date.now();
     const orchestrator = createEmbeddedOrchestrator({ invoke: backend.invoke, maxConcurrency: 4 });
-    const { workflowId, result, plan } = await orchestrator.run(effective.cleanPrompt, { cwd: directory, ...planOptions(options) });
+    const { workflowId, result, plan } = await orchestrator.run(
+      effective.cleanPrompt,
+      { cwd: directory, ...planOptions(options, { maxAgents: DEFAULT_EMBEDDED_MAX_AGENTS }) }
+    );
     if (process.env.ODW_DEBUG) console.error(`[odw] embedded ran workflow=${workflowId} elapsed=${Date.now() - startedAt}ms resultType=${typeof result}`);
     const rendered = typeof result === 'string'
       ? result

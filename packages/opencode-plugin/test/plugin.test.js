@@ -181,6 +181,17 @@ test('plugin: odw_run tool prefers embedded OpenCode model and honors maxAgents'
   assert.equal(client.deleted.length, 6, 'embedded child sessions are cleaned up');
 });
 
+test('plugin: embedded OpenCode runs default to a twenty-agent safety cap', async () => {
+  const client = mockHostClient();
+  const hooks = await OdwPlugin({ directory: DIR, client });
+  const out = await hooks.tool.odw_run.execute(
+    { prompt: 'workflow: audit every file in src for security bugs' },
+    { directory: DIR }
+  );
+  assert.match(out, /EMBEDDED on your OpenCode model/);
+  assert.match(out, /~20 agents/);
+});
+
 // ── bearer-token auth ────────────────────────────────────────────────────────
 
 test('plugin: requests attach the Bearer token from ODW_HOME daemon.token on GET and POST', async () => {
