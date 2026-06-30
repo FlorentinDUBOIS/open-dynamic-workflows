@@ -1,0 +1,11 @@
+{
+  "name": "odw-kimi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kimi Code CLI flow skill for Open Dynamic Workflows.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/*.js\""
+  }
+}

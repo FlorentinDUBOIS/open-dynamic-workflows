@@ -46,6 +46,8 @@ try {
     join(home, '.codex', 'config.toml'),
     join(home, '.agents', 'skills', 'odw', 'SKILL.md'),
     join(home, '.kimi-code', 'mcp.json'),
+    join(targetDir, '.kimi', 'skills', 'odw', 'SKILL.md'),
+    join(targetDir, '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js'),
     join(home, '.gemini', 'settings.json'),
     join(targetDir, 'GEMINI.md'),
     join(home, '.gemini', 'config', 'mcp_config.json'),

@@ -47,7 +47,8 @@ export function installKimiMcp({ home = homedir(), targetDir = process.cwd(), re
   const path = join(home, '.kimi-code', 'mcp.json');
   const current = writeMcpServersJson(path, repoRoot);
   const instructionsPath = installAgentInstructions({ targetDir, host: 'Kimi Code' });
-  return { kind: 'kimi', path, instructionsPath, server: current.mcpServers.odw };
+  const skillPath = installKimiSkill({ targetDir, repoRoot });
+  return { kind: 'kimi', path, instructionsPath, skillPath, server: current.mcpServers.odw };
 }
 
 export function installGeminiMcp({ home = homedir(), targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -92,6 +93,13 @@ export function installCodexSkill({ home = homedir(), repoRoot = DEFAULT_REPO_RO
 export function installCursorSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
   const dest = join(targetDir, '.cursor', 'skills', 'odw');
   copyFresh(join(repoRoot, 'packages', 'cursor-adapter', 'skills', 'odw'), dest);
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
+  return dest;
+}
+
+export function installKimiSkill({ targetDir = process.cwd(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
+  const dest = join(targetDir, '.kimi', 'skills', 'odw');
+  copyFresh(join(repoRoot, 'packages', 'kimi-adapter', 'skills', 'odw'), dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   return dest;
 }
@@ -255,6 +263,12 @@ function doctorChecksFor(kind, options = {}) {
       return [
         checkMcpJson('kimi mcp config', join(options.home ?? homedir(), '.kimi-code', 'mcp.json'), 'mcpServers', options),
         checkAgentInstructions('kimi agent instructions', options.targetDir ?? process.cwd()),
+        checkText('kimi flow skill', join(options.targetDir ?? process.cwd(), '.kimi', 'skills', 'odw', 'SKILL.md'), [
+          'type: flow',
+          '/flow:odw',
+          'daemon-bridge.js --check',
+        ]),
+        checkExists('kimi daemon bridge', join(options.targetDir ?? process.cwd(), '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js')),
       ];
     case 'gemini':
     case 'gemini-cli':

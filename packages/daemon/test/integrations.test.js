@@ -99,6 +99,13 @@ test('installKimiMcp writes Kimi Code CLI global MCP config', () => {
     assert.equal(data.mcpServers.odw.command, 'node');
     assert.ok(data.mcpServers.odw.args[0].includes('mcp-server'));
     assert.match(readFileSync(join(targetDir, 'AGENTS.md'), 'utf8'), /Kimi Code/);
+
+    const skill = readFileSync(join(targetDir, '.kimi', 'skills', 'odw', 'SKILL.md'), 'utf8');
+    assert.match(skill, /^---\r?\nname: odw\r?\n/);
+    assert.match(skill, /type: flow/);
+    assert.match(skill, /\/flow:odw/);
+    assert.match(skill, /daemon-bridge\.js --check/);
+    assert.ok(existsSync(join(targetDir, '.kimi', 'skills', 'odw', 'scripts', 'daemon-bridge.js')));
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -322,11 +329,13 @@ test('doctorAgentIntegration reports missing integration files without throwing'
 
     assert.equal(result.kind, 'kimi');
     assert.equal(result.ok, false);
-    assert.equal(result.checks.length, 2);
+    assert.equal(result.checks.length, 4);
     assert.ok(result.checks.every((check) => check.ok === false));
     assert.match(result.checks[0].message, /missing/);
     assert.match(result.checks[0].path, /\.kimi-code/);
     assert.equal(result.checks[1].label, 'kimi agent instructions');
+    assert.equal(result.checks[2].label, 'kimi flow skill');
+    assert.equal(result.checks[3].label, 'kimi daemon bridge');
   } finally {
     rmSync(targetDir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
@@ -345,6 +354,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.length >= 15);
     assert.ok(result.checks.some((check) => check.label === 'kimi mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'kimi agent instructions'));
+    assert.ok(result.checks.some((check) => check.label === 'kimi flow skill'));
     assert.ok(result.checks.some((check) => check.label === 'gemini mcp config'));
     assert.ok(result.checks.some((check) => check.label === 'gemini project instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zed context server config'));
