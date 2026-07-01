@@ -325,7 +325,9 @@ test('installOpencodePlugin writes a local plugin wrapper and slash commands', (
   try {
     installOpencodePlugin({ targetDir, repoRoot });
     const plugin = readFileSync(join(targetDir, '.opencode', 'plugins', 'odw.mjs'), 'utf8');
+    const config = JSON.parse(readFileSync(join(targetDir, 'opencode.json'), 'utf8'));
     assert.match(plugin, /packages\/opencode-plugin\/src\/index\.js/);
+    assert.ok(config.plugin.includes('./.opencode/plugins/odw.mjs'));
     assert.ok(existsSync(join(targetDir, '.opencode', 'commands', 'odw.md')));
     assert.match(readFileSync(join(targetDir, '.opencode', 'commands', 'odw.md'), 'utf8'), /^workflow: \$ARGUMENTS/m);
     assert.ok(existsSync(join(targetDir, '.opencode', 'commands', 'ultracode.md')));
@@ -646,6 +648,7 @@ test('doctorAgentIntegration verifies every installed integration in all mode', 
     assert.ok(result.checks.some((check) => check.label === 'zcode agent instructions'));
     assert.ok(result.checks.some((check) => check.label === 'zcode ultracode agent skill'));
     assert.ok(result.checks.some((check) => check.label === 'vscode extension'));
+    assert.ok(result.checks.some((check) => check.label === 'opencode plugin config'));
     assert.ok(result.checks.some((check) => check.label === 'opencode odw command'));
     assert.ok(result.checks.some((check) => check.label === 'cursor workflow rule'));
     assert.ok(result.checks.some((check) => check.label === 'cursor agent skill'));

@@ -273,7 +273,14 @@ export function installOpencodePlugin({ targetDir = process.cwd(), repoRoot = DE
   cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'odw.md'), join(commandsDest, 'odw.md'));
   cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'ultracode.md'), join(commandsDest, 'ultracode.md'));
   cpSync(join(repoRoot, 'packages', 'opencode-plugin', 'commands', 'workflows.md'), join(commandsDest, 'workflows.md'));
-  return { kind: 'opencode', pluginPath, commandsPath: commandsDest };
+
+  const configPath = join(targetDir, 'opencode.json');
+  const current = readJson(configPath, {});
+  const plugins = Array.isArray(current.plugin) ? current.plugin.filter((entry) => entry !== './.opencode/plugins/odw.mjs') : [];
+  plugins.push('./.opencode/plugins/odw.mjs');
+  current.plugin = plugins;
+  writeJson(configPath, current);
+  return { kind: 'opencode', pluginPath, commandsPath: commandsDest, configPath };
 }
 
 export function installVscodeExtension({ home = homedir(), repoRoot = DEFAULT_REPO_ROOT } = {}) {
@@ -503,6 +510,9 @@ function doctorChecksFor(kind, options = {}) {
       ];
     case 'opencode':
       return [
+        checkText('opencode plugin config', join(options.targetDir ?? process.cwd(), 'opencode.json'), [
+          './.opencode/plugins/odw.mjs',
+        ]),
         checkExists('opencode plugin wrapper', join(options.targetDir ?? process.cwd(), '.opencode', 'plugins', 'odw.mjs')),
         checkText('opencode odw command', join(options.targetDir ?? process.cwd(), '.opencode', 'commands', 'odw.md'), [
           'workflow: $ARGUMENTS',

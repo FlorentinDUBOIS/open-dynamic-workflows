@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -99,6 +99,57 @@ test('smoke-agent-hosts executes Windows command shims from paths with spaces', 
     const vscode = report.hosts.find((host) => host.name === 'vscode');
     assert.equal(vscode.status, 'ok');
     assert.equal(vscode.output, '9.9.9');
+  } finally {
+    safeRemoveTemp(fakeBin);
+  }
+});
+
+test('smoke-agent-hosts can run an opt-in OpenCode live command probe', () => {
+  const fakeBin = mkdtempSync(join(tmpdir(), 'odw-fake-opencode-'));
+  try {
+    if (process.platform === 'win32') {
+      writeFileSync(
+        join(fakeBin, 'opencode.cmd'),
+        '@echo off\r\n' +
+          'if "%1"=="--version" (\r\n  echo 1.2.3\r\n  exit /b 0\r\n)\r\n' +
+          'if "%ODW_DAEMON_PORT%"=="" (\r\n  echo missing daemon port 1>&2\r\n  exit /b 23\r\n)\r\n' +
+          'if "%ODW_HOME%"=="" (\r\n  echo missing odw home 1>&2\r\n  exit /b 24\r\n)\r\n' +
+          'if not exist "opencode.json" (\r\n  echo missing opencode cwd config 1>&2\r\n  exit /b 25\r\n)\r\n' +
+          'echo {"type":"tool_use","part":{"tool":"odw_workflows","state":{"status":"completed","output":"wf_fake completed"}}}\r\n' +
+          'echo {"type":"text","part":{"text":"Daemon is running"}}\r\n',
+        'utf8'
+      );
+    } else {
+      const file = join(fakeBin, 'opencode');
+      writeFileSync(
+        file,
+        '#!/bin/sh\n' +
+          'if [ "$1" = "--version" ]; then echo 1.2.3; exit 0; fi\n' +
+          'if [ -z "$ODW_DAEMON_PORT" ]; then echo missing daemon port >&2; exit 23; fi\n' +
+          'if [ -z "$ODW_HOME" ]; then echo missing odw home >&2; exit 24; fi\n' +
+          'if [ ! -f opencode.json ]; then echo missing opencode cwd config >&2; exit 25; fi\n' +
+          "echo '{\"type\":\"tool_use\",\"part\":{\"tool\":\"odw_workflows\",\"state\":{\"status\":\"completed\",\"output\":\"wf_fake completed\"}}}'\n" +
+          "echo '{\"type\":\"text\",\"part\":{\"text\":\"Daemon is running\"}}'\n",
+        'utf8'
+      );
+      chmodSync(file, 0o755);
+    }
+    const pathValue = `${fakeBin}${delimiter}${process.env.PATH || ''}`;
+    const output = execFileSync(
+      process.execPath,
+      [join(repoRoot, 'scripts', 'smoke-agent-hosts.mjs'), '--json', '--require-host', 'opencode', '--live-host', 'opencode'],
+      {
+        encoding: 'utf8',
+        cwd: repoRoot,
+        env: { ...process.env, PATH: pathValue, Path: pathValue },
+      }
+    );
+    const report = JSON.parse(output);
+    const opencode = report.hosts.find((host) => host.name === 'opencode');
+    assert.equal(opencode.status, 'ok');
+    assert.equal(opencode.live.ok, true);
+    assert.equal(opencode.live.command, 'tool-prompt');
+    assert.match(opencode.live.output, /wf_fake completed|Daemon is running/);
   } finally {
     safeRemoveTemp(fakeBin);
   }
