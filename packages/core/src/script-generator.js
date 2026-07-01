@@ -18,6 +18,7 @@
 export function generateScript(taskGraph, topology, roles, strategy) {
   const ordered = topoSort(taskGraph.tasks);
   const roleById = new Map(roles.map((r) => [r.id, r]));
+  const cap = taskGraph.root?.agentCap?.maxAgents;
   const header = [
     '/**',
     ' * open-dynamic-workflows orchestration script',
@@ -28,9 +29,10 @@ export function generateScript(taskGraph, topology, roles, strategy) {
     'async function execute(context) {',
     '  const results = {};',
     '',
+    ...agentBudgetPreamble(cap),
   ];
 
-  const body = ordered.map((task) => emitTask(task, roleById, strategy)).join('\n');
+  const body = ordered.map((task, index) => emitTask(task, roleById, strategy, serialAgentsAfter(ordered, index), cap !== undefined)).join('\n');
 
   const lastId = ordered[ordered.length - 1]?.id ?? 'synthesize';
   const footer = [
@@ -45,7 +47,36 @@ export function generateScript(taskGraph, topology, roles, strategy) {
   return header.join('\n') + body + footer.join('\n');
 }
 
-function emitTask(task, roleById, strategy) {
+function agentBudgetPreamble(cap) {
+  if (cap === undefined) return [];
+  return [
+    `  const __odw_agentCap = ${Math.floor(Number(cap))};`,
+    '  let __odw_agentsStarted = 0;',
+    '  function __odw_takeAgentSlots(requested, label, reserve = 0) {',
+    '    const wanted = Math.max(0, Math.floor(Number(requested) || 0));',
+    '    const reserved = Math.max(0, Math.floor(Number(reserve) || 0));',
+    '    const remaining = Math.max(0, __odw_agentCap - __odw_agentsStarted - reserved);',
+    '    const slots = Math.min(wanted, remaining);',
+    '    __odw_agentsStarted += slots;',
+    "    if (slots < wanted) log('agent cap: ' + label + ' limited from ' + wanted + ' to ' + slots + ' agent(s)', 'warn');",
+    "    if (wanted > 0 && slots < 1) throw new Error('agent cap exhausted before ' + label);",
+    '    return slots;',
+    '  }',
+    '',
+  ];
+}
+
+function serialAgentsAfter(tasks, index) {
+  return tasks.slice(index + 1).reduce((sum, task) => sum + serialAgentCount(task), 0);
+}
+
+function serialAgentCount(task) {
+  if (task.type === 'verification') return 3;
+  if (task.parallelizable && task.fanoutSource) return 0;
+  return 1;
+}
+
+function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnabled = false) {
   const role = roleById.get(task.role);
   const phaseName = titleCase(task.id);
   const schema = JSON.stringify(task.expectedOutputSchema ?? { result: 'string' });
@@ -54,6 +85,7 @@ function emitTask(task, roleById, strategy) {
       `role: ${JSON.stringify(task.role)}`,
       `prompt: ${promptExpr}`,
       `schema: ${schema}`,
+      role?.allowedTools?.length ? `tools: ${JSON.stringify(role.allowedTools)}` : null,
       role?.model ? `model: ${JSON.stringify(role.model)}` : null,
       `maxTokens: ${role?.maxTokens ?? 4000}`,
       `timeout: ${strategy.timeouts.perAgent}`,
@@ -72,7 +104,13 @@ function emitTask(task, roleById, strategy) {
       : `results[${JSON.stringify(sourceTask)}] || []`;
     const v = sanitizeKey(task.id);
     lines.push(`  {`);
-    lines.push(`    const items = ${itemsExpr};`);
+    if (agentCapEnabled) {
+      lines.push(`    const ${v}_items_all = ${itemsExpr};`);
+      lines.push(`    const ${v}_slots = __odw_takeAgentSlots(${v}_items_all.length, ${JSON.stringify(phaseName)}, ${serialReserveAfter});`);
+      lines.push(`    const items = ${v}_items_all.slice(0, ${v}_slots);`);
+    } else {
+      lines.push(`    const items = ${itemsExpr};`);
+    }
     lines.push(`    log('${phaseName}: fanning out over ' + items.length + ' items');`);
     // Per-item resilience: a single flaky agent must not sink the whole batch.
     // Each call catches its own failure into a sentinel; we keep the successes
@@ -90,17 +128,37 @@ function emitTask(task, roleById, strategy) {
     lines.push(`  }`);
   } else if (task.type === 'verification') {
     const upstream = task.dependencies[0] ?? 'work';
-    lines.push(`  results[${JSON.stringify(task.id)}] = await verify({`);
-    lines.push(`    target: results[${JSON.stringify(upstream)}],`);
-    lines.push(`    mode: 'adversarial',`);
-    lines.push(`    critics: [`);
-    lines.push(`      { role: 'false-positive-hunter', prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
-    lines.push(`      { role: 'severity-validator', prompt: 'Challenge the severity ratings of these findings.' },`);
-    lines.push(`      { role: 'completeness-checker', prompt: 'What is MISSING from these findings?' },`);
-    lines.push(`    ],`);
-    lines.push(`    consensusThreshold: 2,`);
-    lines.push(`    minConfidence: 0.8,`);
-    lines.push(`  });`);
+    if (agentCapEnabled) {
+      const v = sanitizeKey(task.id);
+      lines.push(`  {`);
+      lines.push(`    const ${v}_critics = [`);
+      lines.push(`      { role: 'false-positive-hunter', tools: ['read_file'], prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
+      lines.push(`      { role: 'severity-validator', tools: ['read_file'], prompt: 'Challenge the severity ratings of these findings.' },`);
+      lines.push(`      { role: 'completeness-checker', tools: ['read_file', 'search'], prompt: 'What is MISSING from these findings?' },`);
+      lines.push(`    ];`);
+      lines.push(`    const ${v}_criticSlots = __odw_takeAgentSlots(${v}_critics.length, ${JSON.stringify(`${phaseName} critics`)}, ${serialReserveAfter});`);
+      lines.push(`    const ${v}_activeCritics = ${v}_critics.slice(0, ${v}_criticSlots);`);
+      lines.push(`    results[${JSON.stringify(task.id)}] = await verify({`);
+      lines.push(`      target: results[${JSON.stringify(upstream)}],`);
+      lines.push(`      mode: 'adversarial',`);
+      lines.push(`      critics: ${v}_activeCritics,`);
+      lines.push(`      consensusThreshold: Math.min(2, ${v}_activeCritics.length),`);
+      lines.push(`      minConfidence: 0.8,`);
+      lines.push(`    });`);
+      lines.push(`  }`);
+    } else {
+      lines.push(`  results[${JSON.stringify(task.id)}] = await verify({`);
+      lines.push(`    target: results[${JSON.stringify(upstream)}],`);
+      lines.push(`    mode: 'adversarial',`);
+      lines.push(`    critics: [`);
+      lines.push(`      { role: 'false-positive-hunter', tools: ['read_file'], prompt: 'Find false positives in these findings. Assume some are wrong.' },`);
+      lines.push(`      { role: 'severity-validator', tools: ['read_file'], prompt: 'Challenge the severity ratings of these findings.' },`);
+      lines.push(`      { role: 'completeness-checker', tools: ['read_file', 'search'], prompt: 'What is MISSING from these findings?' },`);
+      lines.push(`    ],`);
+      lines.push(`    consensusThreshold: 2,`);
+      lines.push(`    minConfidence: 0.8,`);
+      lines.push(`  });`);
+    }
   } else {
     // Inject upstream results as context, compacted to a char budget by DROPPING
     // WHOLE elements (structure-preserving) rather than the old blind
@@ -112,6 +170,9 @@ function emitTask(task, roleById, strategy) {
           .join(', ')} }, { maxChars: 20000 }))`
       : '';
     const call = `${baseAgentCall(`${JSON.stringify(task.description)}${depsContext}`)}`;
+    if (agentCapEnabled) {
+      lines.push(`  __odw_takeAgentSlots(1, ${JSON.stringify(phaseName)}, ${serialReserveAfter});`);
+    }
     if (task.type === 'synthesis') {
       // The terminal synthesis step must never hard-fail the whole run just
       // because the model returned prose instead of JSON. Degrade to a

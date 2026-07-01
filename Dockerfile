@@ -20,4 +20,5 @@ USER odw
 ENV ODW_HOME=/home/odw/.odw
 EXPOSE 7345
 # Foreground mode inside containers (no detached spawn).
+# The daemon auto-generates ~/.odw/daemon.token inside the container volume on first start.
 CMD ["node", "packages/daemon/src/cli.js", "start", "--foreground", "--host", "0.0.0.0"]

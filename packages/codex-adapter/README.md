@@ -1,35 +1,41 @@
 # odw-codex
 
-Codex CLI adapter for open-dynamic-workflows.
+Codex adapter for Open Dynamic Workflows.
 
-## What this actually is
+## What this is
 
-Codex has no plugin marketplace and no `.codex-plugin` manifest format — its real extension points are **AGENTS.md**, **skill folders**, and **MCP client config**. This adapter uses the first two:
+Codex supports local plugins that can package skills, MCP servers, scripts, and
+setup metadata. This adapter ships ODW as a local Codex plugin bundle while also
+keeping the older direct MCP and skill installs as fallbacks.
 
-- `skills/odw/SKILL.md` — the skill that teaches Codex to plan and orchestrate through the local daemon
-- `scripts/daemon-bridge.js` — zero-dependency CJS bridge to the daemon's HTTP API
-- `AGENTS.md` — drop-in instruction block for repos
-- `plugin.json` — descriptive metadata only (kept for ecosystem tooling; Codex does not read it)
+- `.codex-plugin/plugin.json` - Codex plugin manifest
+- `.mcp.json` - generated at install time so the plugin points at this checkout
+- `skills/odw/SKILL.md` - the workflow playbook Codex can load as a skill
+- `skills/ultracode/SKILL.md` - alias skill for users who ask Codex for ultracode-style execution
+- `scripts/daemon-bridge.js` - zero-dependency bridge to the local daemon API
+- `AGENTS.md` - drop-in repo instruction block
 
-## Install
+## Install from this checkout
 
 ```bash
-# user-level skill
-mkdir -p ~/.agents/skills/odw
-cp -r skills/odw/* ~/.agents/skills/odw/
-cp -r scripts ~/.agents/skills/odw/scripts
-
-# or repo-level
-mkdir -p .agents/skills/odw
-cp -r skills/odw/* scripts .agents/skills/odw/
+odw-daemon integrate codex
+odw-daemon doctor codex
 ```
 
-Then (optional, for 100+ agents + crash-resume) install the daemon from GitHub (not yet on npm):
+The installer writes:
+
+- `~/.codex/plugins/odw` - local plugin bundle
+- `~/.agents/plugins/marketplace.json` - personal marketplace entry
+- `~/.codex/config.toml` - fallback MCP server config
+- `~/.agents/skills/odw` - fallback skill folder
+- `~/.agents/skills/ultracode` - fallback ultracode alias skill folder
+
+Start the daemon before running large workflows:
 
 ```bash
-git clone https://github.com/Suraj1235/open-dynamic-workflows
-cd open-dynamic-workflows && npm install && npm run setup
 odw-daemon start
 ```
 
-Without the daemon the skill still works — it falls back to Codex's native subagents (hard-capped by the platform).
+Then open Codex and ask for `workflow: ...`, `ultracode ...`, or
+`/deep-research ...`. The plugin and skill route substantial work through the
+ODW daemon so the chat window does not have to babysit every parallel agent.

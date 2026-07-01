@@ -4,7 +4,7 @@
   "description": "open-dynamic-workflows adapter for OpenClaw: a ClawHub-publishable skill + daemon bridge.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/*.js\""
   },
   "engines": {
     "node": ">=20"

@@ -16,7 +16,8 @@
     "start": "node packages/daemon/src/cli.js start",
     "stop": "node packages/daemon/src/cli.js stop",
     "status": "node packages/daemon/src/cli.js status",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "smoke:hosts": "node scripts/smoke-agent-hosts.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

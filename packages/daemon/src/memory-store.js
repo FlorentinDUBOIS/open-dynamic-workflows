@@ -84,6 +84,8 @@ export function createMemoryStore() {
 
     insertCheckpoint(row) { checkpoints.push(row); },
     latestCheckpoint: (id) => [...checkpoints].reverse().find((c) => c.workflow_id === id) ?? null,
+    checkpointByKey: (id, key) =>
+      [...checkpoints].reverse().find((c) => c.workflow_id === id && c.checkpoint_key === key) ?? null,
 
     journal(workflowId, operation, payload) {
       journalRows.push({ journal_id: ++journalSeq, workflow_id: workflowId, operation, payload: JSON.stringify(payload ?? {}), timestamp: 0 });

@@ -4,12 +4,14 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
 import { createPlan } from 'odw-core';
 import { loadConfig, ensureHome } from './config.js';
 import { createLogger } from './logger.js';
 import { openDatabase, createStore } from './db.js';
 import { createAgentQueue } from './agent-queue.js';
-import { resolveProvider } from './providers/index.js';
+import { checkProviderReadiness, resolveProvider } from './providers/index.js';
 import { createRuntime } from './runtime.js';
 import { createResumability } from './resumability.js';
 import { createServer } from './server.js';
@@ -25,6 +27,35 @@ export async function startDaemon(options = {}) {
   const events = new EventEmitter();
   events.setMaxListeners(100);
 
+  // ── auth: resolve the daemon token (env → file → generate) ─────────────────
+  const host = options.host ?? '127.0.0.1';
+  let authMode = config.auth?.mode ?? 'token';
+  if (authMode === 'none' && !['127.0.0.1', 'localhost', '::1'].includes(host)) {
+    // The docker path binds 0.0.0.0 — never let that combination run tokenless.
+    logger.warn(`auth.mode "none" is only safe on loopback; forcing token auth on ${host}`);
+    authMode = 'token';
+  }
+  let token = process.env.ODW_DAEMON_TOKEN || null;
+  if (!token && existsSync(paths.tokenPath)) {
+    try {
+      // BOM-strip + trim: same precedent as config.json parsing above.
+      const raw = readFileSync(paths.tokenPath, 'utf8');
+      token = (raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).trim() || null;
+    } catch {
+      token = null; // unreadable file = no token; we regenerate below
+    }
+    // writeFileSync's mode only applies at creation — tighten a pre-existing
+    // file here. win32: NTFS ignores POSIX modes and %USERPROFILE% ACLs are
+    // already user-private, so skip chmod there.
+    if (token && process.platform !== 'win32') {
+      try { chmodSync(paths.tokenPath, 0o600); } catch { /* best-effort */ }
+    }
+  }
+  if (!token) {
+    token = randomBytes(32).toString('hex');
+    writeFileSync(paths.tokenPath, token, { encoding: 'utf8', mode: 0o600 });
+  }
+
   const db = openDatabase(options.dbPath ?? paths.dbPath);
   const store = createStore(db);
 
@@ -38,10 +69,8 @@ export async function startDaemon(options = {}) {
     logger,
   });
 
-  const runtime = createRuntime({ store, queue, config, events, logger });
-  const resumability = createResumability({ store, runtime, logger });
-
-  /** Planning: LLM decomposition via the configured planning model when reachable; heuristic otherwise. */
+  /** Planning: LLM decomposition via the configured planning model when reachable; heuristic otherwise.
+   *  ONE definition shared by the HTTP /workflows/plan endpoint AND the runtime's replan() bridge. */
   const planner = (prompt, plannerOptions = {}) =>
     createPlan(prompt, {
       ...plannerOptions,
@@ -65,21 +94,32 @@ export async function startDaemon(options = {}) {
       llmDecompose: plannerOptions.useLlmPlanner ? llmDecompose(config, queue) : undefined,
     });
 
-  /** Preflight: can we actually reach the configured default model? */
-  const checkModel = () => {
-    const model = config.models.default;
-    try {
-      resolveProvider(model, config, { fetchImpl: options.fetchImpl });
-      return { ok: true, model };
-    } catch (error) {
-      return { ok: false, model, reason: String(error.message) };
+  const runtime = createRuntime({ store, queue, config, events, logger, planner });
+  const resumability = createResumability({ store, runtime, logger });
+
+  /** Preflight: do the models a plan/run needs have a route and required key? */
+  const checkModel = (preflightOptions = {}) => {
+    const modelId = (model) =>
+      ['planning', 'default', 'fallback'].includes(model) && config.models?.[model]
+        ? config.models[model]
+        : model;
+    const entries = [
+      { purpose: 'default', model: modelId(preflightOptions.plan?.strategy?.budget?.model ?? config.models.default), required: true },
+      { purpose: 'fallback', model: modelId(config.models.fallback), required: false },
+    ];
+    if (preflightOptions.includePlanning) {
+      entries.push({ purpose: 'planning', model: modelId(config.models.planning), required: true });
     }
+    for (const role of preflightOptions.plan?.roles ?? []) {
+      if (role?.model) entries.push({ purpose: `role:${role.id ?? role.title ?? 'agent'}`, model: modelId(role.model), required: true });
+    }
+    return checkProviderReadiness(config, entries, { fetchImpl: options.fetchImpl });
   };
 
-  const api = createServer({ runtime, store, config, logger, planner, events, checkModel });
-  const server = await api.listen(options.port ?? config.daemon.port, options.host ?? '127.0.0.1');
+  const api = createServer({ runtime, store, config, logger, planner, events, checkModel, auth: { mode: authMode, token } });
+  const server = await api.listen(options.port ?? config.daemon.port, host);
   const { port } = server.address();
-  logger.info(`daemon listening on ${options.host ?? '127.0.0.1'}:${port}`);
+  logger.info(`daemon listening on ${host}:${port}`);
 
   return {
     server: api,

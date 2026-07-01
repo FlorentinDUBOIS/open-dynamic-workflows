@@ -1,10 +1,10 @@
 ﻿{
   "name": "odw-codex",
   "version": "0.1.0",
-  "description": "open-dynamic-workflows adapter for OpenAI Codex CLI: skill folder + daemon bridge scripts.",
+  "description": "open-dynamic-workflows adapter for OpenAI Codex CLI: plugin bundle, ODW/ultracode skills, MCP, and daemon bridge scripts.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/*.js\""
   },
   "engines": {
     "node": ">=20"

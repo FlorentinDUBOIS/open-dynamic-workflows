@@ -169,6 +169,9 @@ test('script-generator: output is valid JS with the documented shape', () => {
   assert.match(src, /verify\(\{/);
   assert.match(src, /checkpoint\(/);
   assert.match(src, /maxConcurrency: 16/);
+  assert.match(src, /tools: \["read_file","search","glob"\]/, 'discovery agents should receive filesystem discovery tools');
+  assert.match(src, /tools: \["read_file","search"\]/, 'analysis agents should receive read/search tools');
+  assert.match(src, /role: 'completeness-checker', tools: \['read_file', 'search'\]/, 'verification critics should receive their tools');
   // fan-out must be per-item resilient: each agent catches its own failure and
   // failed items are filtered out rather than rejecting the whole batch
   assert.match(src, /__odw_failed/);
@@ -247,6 +250,28 @@ test('createPlan: full plan artifact from a single prompt', async () => {
   assert.match(plan.script, /module\.exports = \{ execute \};/);
   new Function(plan.script); // valid JS
   assert.ok(plan.taskGraph.root.estimatedCostUSD > 0);
+});
+
+test('createPlan: maxAgents is a hard runtime cap, not just an estimate hint', async () => {
+  const plan = await createPlan('workflow: audit every file in src for security bugs', {
+    maxAgents: 20,
+    strategy: { concurrency: { max: 20 } },
+  });
+  assert.equal(plan.estimate.totalAgents, 20);
+  assert.equal(plan.taskGraph.root.agentCap.maxAgents, 20);
+  assert.equal(plan.taskGraph.root.agentCap.capped, true);
+  assert.match(plan.script, /const __odw_agentCap = 20/);
+  assert.match(plan.script, /__odw_takeAgentSlots\(work_items_all\.length, "Work", 4\)/);
+  assert.match(plan.script, /work_items_all\.slice\(0, work_slots\)/);
+  assert.match(plan.script, /__odw_takeAgentSlots\(verify_critics\.length, "Verify critics", 1\)/);
+  new Function(plan.script);
+});
+
+test('createPlan: maxAgents rejects caps below required serial phases', async () => {
+  await assert.rejects(
+    () => createPlan('workflow: audit every file in src for security bugs', { maxAgents: 4 }),
+    /minimum is 5/
+  );
 });
 
 test('createPlan: llmDecompose failure falls back to heuristic', async () => {

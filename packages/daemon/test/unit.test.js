@@ -18,7 +18,7 @@ const { createSandbox } = await import('../src/sandbox.js');
 const { createAnthropicProvider } = await import('../src/providers/anthropic.js');
 const { createOpenAIProvider } = await import('../src/providers/openai.js');
 const { createOllamaProvider } = await import('../src/providers/ollama.js');
-const { resolveProvider } = await import('../src/providers/index.js');
+const { checkProviderReadiness, resolveProvider } = await import('../src/providers/index.js');
 
 after(() => rmSync(HOME, { recursive: true, force: true }));
 
@@ -131,7 +131,7 @@ const fakeFetch = (assertFn, payload) => async (url, init) => {
   };
 };
 
-test('provider/anthropic: wire shape, temperature omitted on opus-4-8, usage mapping', async () => {
+test('provider/anthropic: wire shape, temperature sent (dynamic-strip, not model-name allowlist), usage mapping', async () => {
   let captured;
   const provider = createAnthropicProvider({
     apiKey: 'k',
@@ -143,7 +143,10 @@ test('provider/anthropic: wire shape, temperature omitted on opus-4-8, usage map
   assert.match(captured.url, /\/v1\/messages$/);
   assert.equal(captured.headers['x-api-key'], 'k');
   assert.equal(captured.body.system, 'sys');
-  assert.equal(captured.body.temperature, undefined, 'opus-4-8 must omit temperature');
+  // Temperature is now ALWAYS sent; models that reject it trigger a 400 the
+  // provider recognizes and strips-then-retries (see providers-error.test.js).
+  // No stale per-model NO_TEMPERATURE allowlist anymore.
+  assert.equal(captured.body.temperature, 0.5, 'temperature is sent on the wire; stripping is 400-driven, not name-driven');
   assert.ok(captured.body.output_config.format.schema, 'structured output via output_config');
   assert.deepEqual([res.tokensInput, res.tokensOutput, res.text], [7, 3, 'hi']);
 
@@ -205,7 +208,29 @@ test('provider routing: claude→anthropic, gpt→openai, ollama→ollama, prefi
   assert.throws(() => resolveProvider('mystery-model', config), /No provider route/);
 });
 
-test('provider error classification: 429→rate_limit, 503→service_unavailable', async () => {
+test('provider readiness: reports missing required keys without probing the network', () => {
+  const config = { ...defaultConfig(), apiKeys: {}, models: { default: 'claude-sonnet-4-6', fallback: 'gpt-4o' } };
+  const previousAnthropic = process.env.ANTHROPIC_API_KEY;
+  const previousOpenAI = process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  try {
+    const readiness = checkProviderReadiness(config, [
+      { purpose: 'default', model: 'claude-sonnet-4-6', required: true },
+      { purpose: 'fallback', model: 'gpt-4o', required: false },
+    ]);
+    assert.equal(readiness.ok, false);
+    assert.match(readiness.reason, /default claude-sonnet-4-6: anthropic provider requires an API key/);
+    assert.equal(readiness.checks.find((c) => c.purpose === 'fallback').required, false);
+  } finally {
+    if (previousAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropic;
+    if (previousOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousOpenAI;
+  }
+});
+
+test('provider error classification: maps transient HTTP status codes', async () => {
   const failingFetch = (status) => async () => ({ ok: false, status, text: async () => 'err' });
   const provider = createOpenAIProvider({ apiKey: 'k', fetchImpl: failingFetch(429) });
   await assert.rejects(() => provider.call({ model: 'gpt-4o', prompt: 'p' }), (e) => e.code === 'rate_limit');
@@ -328,6 +353,7 @@ test('queue: concurrency is respected', async () => {
   }, { maxConcurrency: 2 });
   await Promise.all(Array.from({ length: 6 }, () => queue.executeAgent({ model: 'm', prompt: 'p' })));
   assert.equal(peak, 2);
+  assert.equal(queue.highWaterPending(), 2);
 });
 
 // ── tools ────────────────────────────────────────────────────────────────────
@@ -470,9 +496,11 @@ test('sandbox: full primitive surface works inside the guest', async () => {
 test('sandbox: verify() modes differ — errored critics sink consensus but not adversarial', async () => {
   // 3 critics: one approves confidently, one rejects confidently, one errors (confidence 0).
   let call = 0;
+  const jobs = [];
   const sandbox = await createSandbox({
     hostBridges: {
-      agent: async () => {
+      agent: async (job) => {
+        jobs.push(job);
         call++;
         if (call % 3 === 1) return { approved: true, confidence: 0.9, critique: '', rejectedItems: ['itemA'] };
         if (call % 3 === 2) return { approved: false, confidence: 0.9, critique: 'reject', rejectedItems: ['itemB'] };
@@ -482,7 +510,7 @@ test('sandbox: verify() modes differ — errored critics sink consensus but not 
   });
   const script = `
     async function execute() {
-      const critics = [{role:"c",prompt:"one"},{role:"c",prompt:"two"},{role:"c",prompt:"three"}];
+      const critics = [{role:"c",tools:["read_file"],prompt:"one"},{role:"c",tools:["search"],prompt:"two"},{role:"c",prompt:"three"}];
       const adversarial = await verify({ target: [1], mode: "adversarial", critics, consensusThreshold: 2, minConfidence: 0.5 });
       const consensus  = await verify({ target: [1], mode: "consensus",  critics, consensusThreshold: 2, minConfidence: 0.5 });
       return {
@@ -500,6 +528,9 @@ test('sandbox: verify() modes differ — errored critics sink consensus but not 
   assert.equal(result.conPassed, false, 'consensus fails: only 1 confident approval < threshold 2');
   assert.equal(result.conApprovals, 1);
   assert.deepEqual(result.rejectedItems.sort(), ['itemA', 'itemB']);
+  assert.deepEqual(jobs[0].tools, ['read_file']);
+  assert.deepEqual(jobs[1].tools, ['search']);
+  assert.equal(jobs[2].tools, undefined);
 });
 
 test('sandbox: no fs/process/require escape hatches exist', async () => {

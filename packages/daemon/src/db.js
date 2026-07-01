@@ -69,6 +69,8 @@ export function createStore(db) {
       INSERT INTO checkpoints (checkpoint_id, workflow_id, phase_name, checkpoint_key, state_data, agent_results)
       VALUES (@checkpoint_id, @workflow_id, @phase_name, @checkpoint_key, @state_data, @agent_results)`),
     latestCheckpoint: db.prepare('SELECT * FROM checkpoints WHERE workflow_id = ? ORDER BY committed_at DESC, checkpoint_id DESC LIMIT 1'),
+    // rowid tiebreak = insertion-order latest within the same second (checkpoint_id is random).
+    checkpointByKey: db.prepare('SELECT * FROM checkpoints WHERE workflow_id = ? AND checkpoint_key = ? ORDER BY committed_at DESC, rowid DESC LIMIT 1'),
 
     journal: db.prepare('INSERT INTO journal (workflow_id, operation, payload) VALUES (?, ?, ?)'),
     journalAfter: db.prepare('SELECT journal_id, operation, payload, timestamp FROM journal WHERE workflow_id = ? AND journal_id > ? ORDER BY journal_id'),
@@ -97,6 +99,7 @@ export function createStore(db) {
 
     insertCheckpoint: (row) => stmts.insertCheckpoint.run(row),
     latestCheckpoint: (id) => stmts.latestCheckpoint.get(id),
+    checkpointByKey: (id, key) => stmts.checkpointByKey.get(id, key),
 
     journal: (workflowId, operation, payload) =>
       stmts.journal.run(workflowId, operation, JSON.stringify(payload ?? {})),

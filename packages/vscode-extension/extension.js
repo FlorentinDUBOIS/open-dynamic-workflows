@@ -7,8 +7,13 @@
 'use strict';
 
 const vscode = require('vscode');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const POLL_MS = 5000;
+
+const AUTH_GUIDANCE = 'odw daemon requires an auth token (copy ~/.odw/daemon.token or set ODW_DAEMON_TOKEN)';
 
 function daemonPort() {
   const configured = vscode.workspace.getConfiguration('odw').get('daemonPort');
@@ -17,15 +22,50 @@ function daemonPort() {
   return 7345;
 }
 
+// Bearer token for the daemon: setting wins over ODW_DAEMON_TOKEN, which wins
+// over ~/.odw/daemon.token. Resolved lazily per request — the daemon (and its
+// token file) may be started after the extension activates.
+function daemonToken() {
+  const configured = vscode.workspace.getConfiguration('odw').get('daemonToken');
+  if (configured) return String(configured);
+  if (process.env.ODW_DAEMON_TOKEN) return process.env.ODW_DAEMON_TOKEN;
+  try {
+    const raw = fs.readFileSync(
+      path.join(process.env.ODW_HOME || path.join(os.homedir(), '.odw'), 'daemon.token'),
+      'utf8'
+    );
+    // Strip a UTF-8 BOM if present — editors and PowerShell on Windows often write one.
+    return (raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function unauthorizedError() {
+  const error = new Error(AUTH_GUIDANCE);
+  error.unauthorized = true;
+  return error;
+}
+
 function createDaemonClient() {
   const base = () => `http://127.0.0.1:${daemonPort()}`;
+  // Headers are built unconditionally so GETs carry the token too.
+  const authHeaders = (extra) => {
+    const headers = { ...extra };
+    const token = daemonToken();
+    if (token) headers.authorization = `Bearer ${token}`;
+    return headers;
+  };
   const request = async (method, path, body) => {
     const res = await fetch(base() + path, {
       method,
-      headers: body ? { 'content-type': 'application/json' } : undefined,
+      headers: authHeaders(body ? { 'content-type': 'application/json' } : undefined),
       body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(method === 'GET' ? 4000 : 30000),
     });
+    // 401 means the daemon IS running but the token is missing/wrong — never
+    // report it as offline.
+    if (res.status === 401) throw unauthorizedError();
     if (!res.ok) throw new Error(`${method} ${path} → ${res.status}`);
     return res.json();
   };
@@ -33,7 +73,10 @@ function createDaemonClient() {
     health: async () => {
       try {
         return await request('GET', '/health');
-      } catch {
+      } catch (error) {
+        // Rethrow 401 so callers surface auth guidance instead of "offline";
+        // anything else (refused, timeout) really is an offline daemon.
+        if (error.unauthorized) throw error;
         return null;
       }
     },
@@ -48,7 +91,8 @@ function createDaemonClient() {
     },
     get: (id) => request('GET', `/workflows/${id}`),
     script: async (id) => {
-      const res = await fetch(`${base()}/workflows/${id}/script`);
+      const res = await fetch(`${base()}/workflows/${id}/script`, { headers: authHeaders() });
+      if (res.status === 401) throw unauthorizedError();
       return res.text();
     },
     control: (id, action) => request('POST', `/workflows/${id}/ctl`, { action }),
@@ -152,11 +196,25 @@ function activate(context) {
   statusBar.command = 'odw.showDashboard';
   context.subscriptions.push(statusBar);
 
+  // health() throws on 401 (daemon running, token missing/wrong) and returns
+  // null when the daemon is actually offline — keep the two states distinct.
+  const healthOrAuthError = async () => {
+    try {
+      return { health: await client.health(), authError: null };
+    } catch (error) {
+      if (!error.unauthorized) throw error;
+      return { health: null, authError: error };
+    }
+  };
+
   const refreshAll = async () => {
-    const health = await client.health();
+    const { health, authError } = await healthOrAuthError();
     if (health) {
       statusBar.text = `$(rocket) odw ${health.activeWorkflows ? `· ${health.activeWorkflows} running` : ''}`;
       statusBar.tooltip = `odw daemon · ${health.activeAgents}/${health.maxConcurrency} agents busy`;
+    } else if (authError) {
+      statusBar.text = '$(rocket) odw needs token';
+      statusBar.tooltip = authError.message;
     } else {
       statusBar.text = '$(rocket) odw offline';
       statusBar.tooltip = 'odw daemon is not running';
@@ -182,7 +240,12 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('odw.runWorkflow', async () => {
-      if (!(await client.health())) {
+      const { health, authError } = await healthOrAuthError();
+      if (authError) {
+        vscode.window.showErrorMessage(authError.message);
+        return;
+      }
+      if (!health) {
         const choice = await vscode.window.showWarningMessage('odw daemon is not running.', 'Install / Start Daemon');
         if (choice) vscode.commands.executeCommand('odw.installDaemon');
         return;
@@ -223,7 +286,9 @@ function activate(context) {
         dashboardPanel = vscode.window.createWebviewPanel('odwDashboard', 'Dynamic Workflows', vscode.ViewColumn.One, {});
         dashboardPanel.onDidDispose(() => (dashboardPanel = null));
       }
-      dashboardPanel.webview.html = dashboardHtml(await client.list(), await client.health());
+      const { health, authError } = await healthOrAuthError();
+      if (authError) vscode.window.showErrorMessage(authError.message);
+      dashboardPanel.webview.html = dashboardHtml(await client.list(), health);
     }),
 
     vscode.commands.registerCommand('odw.pauseWorkflow', async (target) => {
@@ -260,4 +325,4 @@ function activate(context) {
 
 function deactivate() {}
 
-module.exports = { activate, deactivate, _internal: { dashboardHtml, escapeHtml, STATUS_ICONS } };
+module.exports = { activate, deactivate, _internal: { dashboardHtml, escapeHtml, STATUS_ICONS, createDaemonClient, daemonToken } };

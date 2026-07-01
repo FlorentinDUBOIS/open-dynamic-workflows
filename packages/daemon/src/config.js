@@ -10,10 +10,12 @@ import { join } from 'node:path';
 /**
  * @typedef {object} DaemonConfig
  * @property {{port: number, maxConcurrency: number, checkpointInterval: number, logLevel: string}} daemon
+ * @property {{mode: 'token'|'none'}} auth  'token' requires Bearer auth on everything but GET /health
+ * @property {{enabled: boolean, windowMs: number, maxMutationsPerWindow: number, maxUpgradesPerWindow: number}} rateLimit
  * @property {Record<string, string>} apiKeys
  * @property {{planning: string, default: string, fallback: string}} models
  * @property {{defaultMaxTokens: number, defaultMaxCostUSD: number, alertAtPercent: number}} budget
- * @property {{requireApprovalFor: string[], autoApproveReadOnly: boolean, dryRun: boolean, blockedCommands: string[]}} safety
+ * @property {{requireApprovalFor: string[], autoApproveReadOnly: boolean, dryRun: boolean, blockedCommands: string[], allowTestCommands: string[], web: {allowPrivateNetwork: boolean}}} safety
  * @property {{autoCreateBranch: boolean, branchPrefix: string, commitCheckpoints: boolean}} git
  * @property {Record<string, string>} baseURLs  per-provider endpoint overrides
  */
@@ -42,6 +44,7 @@ export function ensureHome() {
     configPath: join(home, 'config.json'),
     pidFile: join(home, 'daemon.pid'),
     logFile: join(dirs.logs, 'daemon.log'),
+    tokenPath: join(home, 'daemon.token'),
   };
 }
 
@@ -49,6 +52,8 @@ export function ensureHome() {
 export function defaultConfig() {
   return {
     daemon: { port: DEFAULT_PORT, maxConcurrency: 16, checkpointInterval: 30, logLevel: 'info' },
+    auth: { mode: 'token' },
+    rateLimit: { enabled: true, windowMs: 60000, maxMutationsPerWindow: 120, maxUpgradesPerWindow: 30 },
     apiKeys: {},
     models: { planning: 'gpt-4o-mini', default: 'claude-sonnet-4-6', fallback: 'gpt-4o' },
     budget: { defaultMaxTokens: 1_000_000, defaultMaxCostUSD: 50, alertAtPercent: 80 },
@@ -63,6 +68,13 @@ export function defaultConfig() {
         'Remove-Item -Recurse -Force', 'rd /s', 'rmdir /s', 'del /f', 'del /q', 'format ', 'diskpart',
         'Format-Volume', 'Clear-Disk', 'reg delete', 'Set-ExecutionPolicy',
       ],
+      // Deliberately narrow run_bash allowlist (EXACT string match) so
+      // test-gated verification can run headless without opening arbitrary
+      // shell; blockedCommands and dryRun still apply to allowlisted commands.
+      allowTestCommands: [],
+      // SSRF guard opt-out: true lets web_fetch reach loopback/RFC-1918 hosts
+      // (users legitimately fetch localhost docs servers).
+      web: { allowPrivateNetwork: false },
     },
     git: { autoCreateBranch: true, branchPrefix: 'odw/', commitCheckpoints: false },
     baseURLs: {},

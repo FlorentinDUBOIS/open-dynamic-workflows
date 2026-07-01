@@ -30,14 +30,44 @@ function daemonPort() {
   return 7345;
 }
 
+// Bearer token for the daemon: env wins over ~/.odw/daemon.token. Resolved
+// lazily per request — the daemon (and its token file) may be started after
+// this process. Absent/unreadable file means "no token".
+function daemonToken() {
+  if (process.env.ODW_DAEMON_TOKEN) return process.env.ODW_DAEMON_TOKEN;
+  try {
+    const raw = fs.readFileSync(
+      path.join(process.env.ODW_HOME || path.join(os.homedir(), '.odw'), 'daemon.token'),
+      'utf8'
+    );
+    // Strip a UTF-8 BOM if present — editors and PowerShell on Windows often write one.
+    return (raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const AUTH_GUIDANCE = 'odw daemon requires an auth token (copy ~/.odw/daemon.token or set ODW_DAEMON_TOKEN)';
+
 const BASE = `http://127.0.0.1:${daemonPort()}`;
 
 async function request(method, route, body) {
+  // Headers are built unconditionally so GETs carry the token too.
+  const headers = body ? { 'content-type': 'application/json' } : {};
+  const token = daemonToken();
+  if (token) headers.authorization = `Bearer ${token}`;
   const res = await fetch(BASE + route, {
     method,
-    headers: body ? { 'content-type': 'application/json' } : undefined,
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) {
+    // 401 means the daemon IS running but the token is missing/wrong — never
+    // report it as unreachable/offline.
+    const error = new Error(AUTH_GUIDANCE);
+    error.unauthorized = true;
+    throw error;
+  }
   if (!res.ok) throw new Error(`${method} ${route} → ${res.status}: ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
@@ -50,8 +80,12 @@ async function main() {
       const health = await request('GET', '/health');
       console.log(`odw daemon healthy on ${BASE} — ${health.activeWorkflows} active workflow(s)`);
       process.exit(0);
-    } catch {
-      console.error(`odw daemon not reachable on ${BASE}. Install from github.com/Suraj1235/open-dynamic-workflows (clone, npm install, npm run setup), then: odw-daemon start`);
+    } catch (error) {
+      if (error.unauthorized) {
+        console.error(error.message);
+      } else {
+        console.error(`odw daemon not reachable on ${BASE}. Install from github.com/Suraj1235/open-dynamic-workflows (clone, npm install, npm run setup), then: odw-daemon start`);
+      }
       process.exit(1);
     }
   }

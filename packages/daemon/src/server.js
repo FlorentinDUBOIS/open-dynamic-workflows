@@ -5,20 +5,73 @@
  */
 
 import http from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 
 /**
  * @param {{runtime: object, store: object, config: object, logger: object,
  *          planner: (prompt: string, options?: object) => Promise<object>,
- *          events: {on: Function, off: Function}, startedAt?: number}} deps
+ *          events: {on: Function, off: Function}, startedAt?: number,
+ *          auth?: {mode: 'token'|'none', token: string|null}}} deps
  */
 export function createServer(deps) {
   const { runtime, store, config, logger, planner, events } = deps;
   const startedAt = deps.startedAt ?? Date.now();
+  // startDaemon always supplies auth; 'none' keeps direct embedders working.
+  const auth = deps.auth ?? { mode: 'none', token: null };
 
   const app = express();
   app.use(express.json({ limit: '8mb' }));
+
+  // ── auth: Bearer token on everything except GET /health ────────────────────
+  // Compared via timingSafeEqual over sha256 digests of both sides — digesting
+  // first sidesteps timingSafeEqual's equal-length requirement.
+  const sha256 = (s) => createHash('sha256').update(String(s ?? '')).digest();
+  const tokenMatches = (header) =>
+    typeof header === 'string' &&
+    header.startsWith('Bearer ') &&
+    timingSafeEqual(sha256(header.slice('Bearer '.length)), sha256(auth.token));
+  const UNAUTHORIZED = {
+    error: { code: 'unauthorized', message: 'daemon requires an auth token — copy it from ~/.odw/daemon.token or set ODW_DAEMON_TOKEN' },
+  };
+  app.use((req, res, next) => {
+    if (auth.mode === 'none') return next();
+    // /health stays tokenless: docker healthcheck + CLI preflight depend on it.
+    if (req.method === 'GET' && req.path === '/health') return next();
+    if (tokenMatches(req.headers.authorization)) return next();
+    res.status(401).json(UNAUTHORIZED);
+  });
+
+  // ── rate limiting: in-memory fixed window keyed by route class ─────────────
+  const rateLimit = config.rateLimit ?? { enabled: false };
+  const windows = new Map(); // route class → {start, count}
+  const underLimit = (key, max) => {
+    if (!rateLimit.enabled) return true;
+    const now = Date.now();
+    let w = windows.get(key);
+    if (!w || now - w.start >= rateLimit.windowMs) {
+      w = { start: now, count: 0 };
+      windows.set(key, w);
+    }
+    return ++w.count <= max;
+  };
+  const RATE_LIMITED = {
+    error: { code: 'rate_limited', message: 'too many requests in the current window — retry shortly' },
+  };
+  const mutationLimiter = (req, res, next) => {
+    if (underLimit('mutation', rateLimit.maxMutationsPerWindow)) return next();
+    res.status(429).json(RATE_LIMITED);
+  };
+  // Sweep stale windows; unref'd AND cleared in close() — an open handle here
+  // would hang the 30s graceful-shutdown drain.
+  const sweep = setInterval(() => {
+    const now = Date.now();
+    for (const [key, w] of windows) {
+      if (now - w.start >= rateLimit.windowMs) windows.delete(key);
+    }
+  }, rateLimit.windowMs ?? 60000);
+  sweep.unref();
 
   const asyncRoute = (fn) => (req, res) => {
     Promise.resolve(fn(req, res)).catch((error) => {
@@ -36,6 +89,7 @@ export function createServer(deps) {
       activeWorkflows: stats.activeWorkflows,
       activeAgents: stats.queuePending,
       queuedAgents: stats.queueSize,
+      maxActiveAgentsObserved: stats.queueHighWaterPending,
       maxConcurrency: stats.maxConcurrency,
     });
   });
@@ -46,11 +100,23 @@ export function createServer(deps) {
     res.json(deps.checkModel ? deps.checkModel() : { ok: true });
   }));
 
-  app.post('/workflows/plan', asyncRoute(async (req, res) => {
+  const ensureModelReady = (options) => {
+    const readiness = deps.checkModel?.(options);
+    if (readiness && !readiness.ok) {
+      throw Object.assign(new Error(`model configuration is not ready: ${readiness.reason}`), {
+        status: 400,
+        code: 'provider_not_ready',
+      });
+    }
+    return readiness;
+  };
+
+  app.post('/workflows/plan', mutationLimiter, asyncRoute(async (req, res) => {
     const { prompt, options } = req.body ?? {};
     if (!prompt || typeof prompt !== 'string') {
       throw Object.assign(new Error('body.prompt (string) is required'), { status: 400, code: 'bad_request' });
     }
+    ensureModelReady({ includePlanning: options?.useLlmPlanner === true });
     const plan = await planner(prompt, options ?? {});
     // Annotate whether the plan includes an adversarial verification node, so
     // the absence of the safety net is never silent.
@@ -58,12 +124,15 @@ export function createServer(deps) {
     res.json({ plan });
   }));
 
-  app.post('/workflows/exec', asyncRoute(async (req, res) => {
+  app.post('/workflows/exec', mutationLimiter, asyncRoute(async (req, res) => {
     const { plan, strategy, cwd, args } = req.body ?? {};
     if (!plan?.script) {
       throw Object.assign(new Error('body.plan with a compiled script is required'), { status: 400, code: 'bad_request' });
     }
-    const workflowId = await runtime.execWorkflow(plan, strategy, { cwd, args });
+    if (planNeedsModelProvider(plan)) ensureModelReady({ plan });
+    // roles must travel with the run (embedded.js does the same) — dropping
+    // them silently strips role system prompts from daemon-run workflows.
+    const workflowId = await runtime.execWorkflow(plan, strategy, { cwd, args, roles: plan.roles });
     res.status(202).json({ workflowId, status: 'running' });
   }));
 
@@ -122,7 +191,7 @@ export function createServer(deps) {
     res.json({ status: row.status, result: null });
   }));
 
-  app.post('/workflows/:id/ctl', asyncRoute(async (req, res) => {
+  app.post('/workflows/:id/ctl', mutationLimiter, asyncRoute(async (req, res) => {
     const { action } = req.body ?? {};
     if (!['pause', 'resume', 'stop'].includes(action)) {
       throw Object.assign(new Error('body.action must be pause|resume|stop'), { status: 400, code: 'bad_request' });
@@ -142,6 +211,18 @@ export function createServer(deps) {
     const match = (request.url ?? '').match(/^\/ws\/([A-Za-z0-9_-]+)(\?.*)?$/);
     if (!match) {
       socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    // 401 BEFORE the workflow-existence check — an unauthenticated caller must
+    // not be able to use 404-vs-101 as a workflow-ID oracle.
+    if (auth.mode !== 'none' && !tokenMatches(request.headers.authorization)) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (!underLimit('upgrade', rateLimit.maxUpgradesPerWindow)) {
+      socket.write('HTTP/1.1 429 Too Many Requests\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -187,6 +268,7 @@ export function createServer(deps) {
       });
     },
     close() {
+      clearInterval(sweep);
       return new Promise((resolve) => {
         wss.clients.forEach((ws) => ws.close());
         server.close(() => resolve());
@@ -202,4 +284,11 @@ function safeMessage(error) {
     .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[REDACTED]')
     .replace(/Bearer\s+\S+/g, '[REDACTED]')
     .slice(0, 500);
+}
+
+function planNeedsModelProvider(plan) {
+  if ((plan.estimate?.totalAgents ?? 0) > 0) return true;
+  if ((plan.roles?.length ?? 0) > 0) return true;
+  if (plan.strategy?.budget?.model) return true;
+  return /\b(agent|verify|replan)\s*\(/.test(String(plan.script ?? ''));
 }

@@ -9,12 +9,14 @@ import { startMockLLM } from './mock-llm.js';
 
 const HOME = mkdtempSync(join(tmpdir(), 'odw-int-'));
 process.env.ODW_HOME = HOME;
+delete process.env.ODW_DAEMON_TOKEN; // the temp-home token file must win
 
 const { startDaemon } = await import('../src/index.js');
 
 let mock;
 let daemon;
 let base;
+let AUTH; // bearer header for the temp-home token (auto-generated at startup)
 
 before(async () => {
   mock = await startMockLLM();
@@ -29,6 +31,7 @@ before(async () => {
     },
   });
   base = `http://127.0.0.1:${daemon.port}`;
+  AUTH = { authorization: `Bearer ${readFileSync(join(HOME, 'daemon.token'), 'utf8').trim()}` };
 });
 
 after(async () => {
@@ -38,7 +41,7 @@ after(async () => {
 });
 
 const post = (path, body) =>
-  fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...AUTH }, body: JSON.stringify(body) });
 
 test('integration: /health reports a live daemon', async () => {
   const res = await fetch(`${base}/health`);
@@ -46,6 +49,7 @@ test('integration: /health reports a live daemon', async () => {
   const health = await res.json();
   assert.equal(health.status, 'ok');
   assert.equal(health.maxConcurrency, 8);
+  assert.equal(health.maxActiveAgentsObserved, 0);
 });
 
 test('integration: plan → exec → result completes a full workflow over HTTP', async () => {
@@ -61,32 +65,69 @@ test('integration: plan → exec → result completes a full workflow over HTTP'
   const { workflowId } = await execRes.json();
   assert.match(workflowId, /^wf_/);
 
-  const resultRes = await fetch(`${base}/workflows/${workflowId}/result?wait`);
+  const resultRes = await fetch(`${base}/workflows/${workflowId}/result?wait`, { headers: AUTH });
   const body = await resultRes.json();
   assert.equal(body.status, 'completed', JSON.stringify(body).slice(0, 400));
   // synthesis output from the mock
   assert.equal(body.result.summary, 'mock synthesis of all results');
 
   // workflow record reflects completion + accounting
-  const record = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+  const record = await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json();
   assert.equal(record.status, 'completed');
   assert.ok(record.completed_agents >= 5, `agents: ${record.completed_agents}`); // 1 discovery + 3 fanout + 3 critics + 1 synth (≥5)
   assert.ok(record.tokens_input > 0 && record.cost_usd >= 0);
   assert.equal(record.nodeStats.completed, record.completed_agents);
 
   // script endpoint serves the compiled plan
-  const script = await (await fetch(`${base}/workflows/${workflowId}/script`)).text();
+  const script = await (await fetch(`${base}/workflows/${workflowId}/script`, { headers: AUTH })).text();
   assert.match(script, /async function execute\(context\)/);
 });
 
 test('integration: /config/check passes for the mock (usable model) and plan reports verification', async () => {
-  const check = await (await fetch(`${base}/config/check`)).json();
+  const check = await (await fetch(`${base}/config/check`, { headers: AUTH })).json();
   assert.equal(check.ok, true, JSON.stringify(check));
+  assert.ok(check.checks.some((c) => c.purpose === 'default' && c.ok), JSON.stringify(check));
 
   // an audit-class prompt must include an adversarial verification node
   const { plan } = await post('/workflows/plan', { prompt: 'workflow: review every file in src for bugs' }).then((r) => r.json());
   assert.equal(plan.hasVerification, true, 'review/bug prompts should plan a verification pass');
   assert.ok(plan.taskGraph.tasks.some((t) => t.type === 'verification'));
+});
+
+test('integration: provider readiness fails before planning when the default model has no key', async () => {
+  const previousAnthropic = process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  const badDaemon = await startDaemon({
+    port: 0,
+    dbPath: join(HOME, 'bad-provider.db'),
+    logStream: { write() {} },
+    configOverrides: {
+      daemon: { maxConcurrency: 2, logLevel: 'error' },
+      baseURLs: { default: mock.url },
+      apiKeys: { anthropic: '' },
+      models: { planning: 'mock-planner', default: 'claude-sonnet-4-6', fallback: 'mock-model' },
+    },
+  });
+  try {
+    const badBase = `http://127.0.0.1:${badDaemon.port}`;
+    const check = await (await fetch(`${badBase}/config/check`, { headers: AUTH })).json();
+    assert.equal(check.ok, false, JSON.stringify(check));
+    assert.match(check.reason, /anthropic provider requires an API key/);
+
+    const res = await fetch(`${badBase}/workflows/plan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...AUTH },
+      body: JSON.stringify({ prompt: 'workflow: audit every file for bugs' }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error.code, 'provider_not_ready');
+    assert.match(body.error.message, /default claude-sonnet-4-6/);
+  } finally {
+    await badDaemon.close();
+    if (previousAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousAnthropic;
+  }
 });
 
 test('integration: a bare --script-style plan uses the configured default model (not the hardcoded fallback)', async () => {
@@ -98,7 +139,7 @@ test('integration: a bare --script-style plan uses the configured default model 
   let rec;
   for (let i = 0; i < 100; i++) {
     await new Promise((r) => setTimeout(r, 50));
-    rec = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+    rec = await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json();
     if (['completed', 'failed', 'cancelled'].includes(rec.status)) break;
   }
   assert.equal(rec.status, 'completed', `bare-script run should complete on the mock model, got ${rec.status} (${rec.error})`);
@@ -122,13 +163,13 @@ test('integration: a --script run inherits config.safety (cleared gates let it w
     const b = `http://127.0.0.1:${sDaemon.port}`;
     const script = 'async function execute(c){ await c.tools.write_file("out.txt","hello from odw"); return { wrote: true }; }\nmodule.exports = { execute };';
     const { workflowId } = await (await fetch(`${b}/workflows/exec`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ plan: { script }, cwd: proj }),
     })).json();
     let rec;
     for (let i = 0; i < 100; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      rec = await (await fetch(`${b}/workflows/${workflowId}`)).json();
+      rec = await (await fetch(`${b}/workflows/${workflowId}`, { headers: AUTH })).json();
       if (['completed', 'failed', 'cancelled'].includes(rec.status)) break;
     }
     assert.equal(rec.status, 'completed', `should complete with gates cleared, got ${rec.status} (${rec.error})`);
@@ -140,7 +181,7 @@ test('integration: a --script run inherits config.safety (cleared gates let it w
 });
 
 test('integration: list endpoint includes the workflow', async () => {
-  const { workflows } = await (await fetch(`${base}/workflows`)).json();
+  const { workflows } = await (await fetch(`${base}/workflows`, { headers: AUTH })).json();
   assert.ok(workflows.length >= 1);
   assert.ok(workflows[0].workflow_id);
 });
@@ -151,9 +192,9 @@ test('integration: websocket replays journal and streams live events', async () 
   const { workflowId } = await (await post('/workflows/exec', { plan })).json();
 
   // wait for completion first, then connect with after=0 → full replay
-  await fetch(`${base}/workflows/${workflowId}/result?wait`);
+  await fetch(`${base}/workflows/${workflowId}/result?wait`, { headers: AUTH });
 
-  const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/ws/${workflowId}?after=0`);
+  const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/ws/${workflowId}?after=0`, { headers: AUTH });
   const received = [];
   ws.on('message', (data) => received.push(JSON.parse(data.toString())));
   await once(ws, 'open');
@@ -167,7 +208,8 @@ test('integration: websocket replays journal and streams live events', async () 
 });
 
 test('integration: websocket rejects unknown workflow', async () => {
-  const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/ws/wf_does_not_exist`);
+  // token attached: this asserts the EXISTENCE check (auth-less 401 is covered in auth.test.js)
+  const ws = new WebSocket(`ws://127.0.0.1:${daemon.port}/ws/wf_does_not_exist`, { headers: AUTH });
   const [error] = await once(ws, 'error');
   assert.match(String(error.message), /404/);
 });
@@ -179,7 +221,7 @@ test('integration: bad requests return structured errors without stack traces', 
   assert.equal(body.error.code, 'bad_request');
   assert.ok(!JSON.stringify(body).includes('at '), 'no stack frames in response');
 
-  const missing = await fetch(`${base}/workflows/wf_nope`);
+  const missing = await fetch(`${base}/workflows/wf_nope`, { headers: AUTH });
   assert.equal(missing.status, 404);
 });
 
@@ -198,23 +240,23 @@ test('integration: stop control cancels a slow workflow', async () => {
   try {
     const slowBase = `http://127.0.0.1:${slowDaemon.port}`;
     const { plan } = await (await fetch(`${slowBase}/workflows/plan`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ prompt: 'audit all API endpoints for missing auth checks' }),
     })).json();
     const { workflowId } = await (await fetch(`${slowBase}/workflows/exec`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ plan }),
     })).json();
 
     await new Promise((r) => setTimeout(r, 300)); // let it start
     const ctl = await (await fetch(`${slowBase}/workflows/${workflowId}/ctl`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ action: 'stop' }),
     })).json();
     assert.equal(ctl.status, 'cancelled');
 
     await new Promise((r) => setTimeout(r, 500));
-    const record = await (await fetch(`${slowBase}/workflows/${workflowId}`)).json();
+    const record = await (await fetch(`${slowBase}/workflows/${workflowId}`, { headers: AUTH })).json();
     assert.equal(record.status, 'cancelled');
   } finally {
     await slowDaemon.close();
@@ -241,11 +283,11 @@ test('integration: crash-resume — completed nodes are cached and not re-execut
   try {
     const base = `http://127.0.0.1:${rDaemon.port}`;
     const { plan } = await (await fetch(`${base}/workflows/plan`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ prompt: 'audit all API endpoints for missing auth checks' }),
     })).json();
     const { workflowId } = await (await fetch(`${base}/workflows/exec`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ plan }),
     })).json();
 
@@ -253,34 +295,34 @@ test('integration: crash-resume — completed nodes are cached and not re-execut
     let completedBefore = 0;
     for (let i = 0; i < 100; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      const rec = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+      const rec = await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json();
       completedBefore = rec.completed_agents;
       if (completedBefore >= 3 && rec.status === 'running') break;
     }
     assert.ok(completedBefore >= 3, `expected >=3 completed before stop, saw ${completedBefore}`);
 
     await fetch(`${base}/workflows/${workflowId}/ctl`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ action: 'stop' }),
     });
     // let the stop settle
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      const rec = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+      const rec = await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json();
       if (rec.status === 'cancelled') break;
     }
     const callsBeforeResume = slowMock.calls.length;
-    const completedAtStop = (await (await fetch(`${base}/workflows/${workflowId}`)).json()).completed_agents;
+    const completedAtStop = (await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json()).completed_agents;
 
     // Resume and run to completion.
     await fetch(`${base}/workflows/${workflowId}/ctl`, {
-      method: 'POST', headers: { 'content-type': 'application/json' },
+      method: 'POST', headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ action: 'resume' }),
     });
     let final;
     for (let i = 0; i < 200; i++) {
       await new Promise((r) => setTimeout(r, 100));
-      final = await (await fetch(`${base}/workflows/${workflowId}`)).json();
+      final = await (await fetch(`${base}/workflows/${workflowId}`, { headers: AUTH })).json();
       if (['completed', 'failed', 'cancelled'].includes(final.status)) break;
     }
     assert.equal(final.status, 'completed', `resumed run should complete, got ${final.status} (${final.error})`);
