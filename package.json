@@ -8,9 +8,9 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "npm test --workspaces --if-present",
+    "test": "node scripts/run-workspace-script.mjs test",
     "test:external": "node --test Tests/odw-endurance.test.mjs Tests/odw-real-projects/*.test.mjs",
-    "coverage": "npm run coverage --workspaces --if-present",
+    "coverage": "node scripts/run-workspace-script.mjs coverage",
     "lint": "eslint .",
     "audit:high": "npm audit --audit-level=high",
     "odw": "node packages/daemon/src/cli.js",
