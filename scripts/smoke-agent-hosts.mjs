@@ -490,8 +490,8 @@ function quoteCmdArg(value) {
 }
 
 async function commandPath(command) {
-  const lookup = process.platform === 'win32' ? 'where.exe' : 'command';
-  const lookupArgs = process.platform === 'win32' ? [command] : ['-v', command];
+  const lookup = process.platform === 'win32' ? 'where.exe' : 'sh';
+  const lookupArgs = process.platform === 'win32' ? [command] : ['-c', 'command -v "$1"', 'sh', command];
   try {
     const { stdout } = await execFileAsync(lookup, lookupArgs, { encoding: 'utf8', timeout: 5000 });
     const candidates = stdout.trim().split(/\r?\n/).filter(Boolean);

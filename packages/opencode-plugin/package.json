@@ -18,7 +18,7 @@
     "odw-daemon": "^0.1.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.2.27"
+    "@opencode-ai/plugin": "1.2.27"
   },
   "engines": {
     "node": ">=20"
