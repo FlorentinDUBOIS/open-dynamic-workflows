@@ -8,7 +8,7 @@
     "odw-mcp-embedded": "src/embedded-index.js"
   },
   "scripts": {
-    "test": "node --test \"test/*.js\""
+    "test": "node ../../scripts/run-node-tests.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

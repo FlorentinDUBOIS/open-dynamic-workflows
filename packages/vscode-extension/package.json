@@ -54,6 +54,6 @@
     }
   },
   "scripts": {
-    "test": "node --test \"test/*.js\""
+    "test": "node ../../scripts/run-node-tests.mjs"
   }
 }

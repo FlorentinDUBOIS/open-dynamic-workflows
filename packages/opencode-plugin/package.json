@@ -8,7 +8,7 @@
     ".": "./src/index.js"
   },
   "scripts": {
-    "test": "node --test \"test/*.js\""
+    "test": "node ../../scripts/run-node-tests.mjs"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.2.0"

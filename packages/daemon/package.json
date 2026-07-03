@@ -12,8 +12,8 @@
     "odw-daemon": "src/cli.js"
   },
   "scripts": {
-    "test": "node --test \"test/*.js\"",
-    "coverage": "c8 --check-coverage --lines 80 --include \"src/**\" --exclude \"src/cli.js\" node --test \"test/*.js\""
+    "test": "node ../../scripts/run-node-tests.mjs",
+    "coverage": "c8 --check-coverage --lines 80 --include \"src/**\" --exclude \"src/cli.js\" node ../../scripts/run-node-tests.mjs"
   },
   "dependencies": {
     "ajv": "^8.20.0",

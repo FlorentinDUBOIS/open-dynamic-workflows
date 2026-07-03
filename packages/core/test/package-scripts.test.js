@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
-test('workspace test scripts use explicit file globs, not a test directory argument', () => {
+test('workspace test scripts use the shared Node-20-safe runner', () => {
   const packageDirs = readdirSync(join(root, 'packages'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(root, 'packages', entry.name));
@@ -18,8 +18,13 @@ test('workspace test scripts use explicit file globs, not a test directory argum
       if (name !== 'test' && name !== 'coverage') continue;
       assert.doesNotMatch(
         script,
-        /\bnode --test test\/?\b/,
-        `${packageJson.name} ${name} script should use node --test "test/*.js" for Windows/Node 24 compatibility`
+        /\bnode --test\b/,
+        `${packageJson.name} ${name} script should use scripts/run-node-tests.mjs for Node 20-compatible file discovery`
+      );
+      assert.match(
+        script,
+        /scripts\/run-node-tests\.mjs/,
+        `${packageJson.name} ${name} script should use scripts/run-node-tests.mjs`
       );
     }
   }

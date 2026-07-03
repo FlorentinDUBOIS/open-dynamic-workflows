@@ -4,7 +4,7 @@
   "description": "open-dynamic-workflows adapter for Google Antigravity: plugin bundle, ODW/ultracode skills, saved workflows, and daemon bridge.",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test \"test/*.js\""
+    "test": "node ../../scripts/run-node-tests.mjs"
   },
   "engines": {
     "node": ">=20"
