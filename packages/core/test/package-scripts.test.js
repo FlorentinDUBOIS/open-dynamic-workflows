@@ -29,3 +29,20 @@ test('workspace test scripts use the shared Node-20-safe runner', () => {
     }
   }
 });
+
+test('root external test script uses the shared Node-20-safe runner', () => {
+  const raw = readFileSync(join(root, 'package.json'), 'utf8');
+  const packageJson = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+  const script = packageJson.scripts?.['test:external'] ?? '';
+
+  assert.doesNotMatch(
+    script,
+    /\bnode --test\b/,
+    'root test:external should use scripts/run-node-tests.mjs for Node 20-compatible file discovery'
+  );
+  assert.match(
+    script,
+    /scripts\/run-node-tests\.mjs/,
+    'root test:external should use scripts/run-node-tests.mjs'
+  );
+});
