@@ -101,7 +101,7 @@ try {
     createDaemonClient,
   });
 
-  if (wantsLiveHost('opencode')) {
+  if (wantsAnyLiveHostProbe('opencode')) {
     installOpenCodeSmokeConfig({ targetDir, mockProvider });
   }
 
@@ -110,7 +110,7 @@ try {
   }
 
   const missingRequired = requiredHosts.filter((name) => !report.hosts.some((host) => host.name === name && host.status === 'ok'));
-  const missingLive = liveHosts.filter((name) => !report.hosts.some((host) => host.name === name && host.live?.ok));
+  const missingLive = liveHosts.filter((name) => !hasRequiredLiveEvidence(name, report.hosts));
   if (missingRequired.length) {
     report.error = `required host evidence missing: ${missingRequired.join(', ')}`;
   } else if (missingLive.length) {
@@ -212,7 +212,7 @@ async function probeHosts({ targetDir, home, port, mockProvider }) {
     try {
       const { stdout, stderr } = await runFoundCommand(found, probe.args);
       const result = { name: probe.name, status: 'ok', command: found, output: firstLine(stdout || stderr) };
-      if (wantsLiveHost(probe.name)) {
+      if (wantsAnyLiveHostProbe(probe.name)) {
         result.live = await runLiveHostProbe(probe.name, found, { targetDir, home, port, mockProvider });
       }
       results.push(result);
@@ -232,41 +232,40 @@ function wantsLiveHost(name) {
   return liveHosts.includes(name) || liveHosts.includes('all');
 }
 
+function wantsEmbeddedLiveHost(name) {
+  return name === 'opencode' && (liveHosts.includes('opencode-embedded') || liveHosts.includes('all'));
+}
+
+function wantsAnyLiveHostProbe(name) {
+  return wantsLiveHost(name) || wantsEmbeddedLiveHost(name);
+}
+
+function hasRequiredLiveEvidence(name, hosts) {
+  if (name === 'opencode-embedded') {
+    return hosts.some((host) => host.name === 'opencode' && host.live?.embedded?.ok);
+  }
+  return hosts.some((host) => host.name === name && host.live?.ok);
+}
+
 async function runLiveHostProbe(name, found, { targetDir, home, port, mockProvider }) {
   const mockCallsBefore = mockProvider?.calls.length ?? 0;
   try {
     if (name !== 'opencode') {
       return { ok: false, reason: `no live probe implemented for ${name}` };
     }
-    const env = { ...process.env };
-    if (home) env.ODW_HOME = home;
-    if (port) env.ODW_DAEMON_PORT = String(port);
-    env.OPENAI_API_KEY = env.OPENAI_API_KEY || 'odw-smoke';
-    const { stdout, stderr } = await runFoundCommand(found, [
-      'run',
-      '--format',
-      'json',
-      '--model',
-      'openai/odw-smoke-model',
-      '--dir',
-      targetDir,
-      'Use the odw_workflows tool to list workflows known to the local daemon, then answer with one short sentence.',
-    ], { cwd: targetDir, env, timeout: liveHostProbeTimeoutMs() });
-    const text = `${stdout ?? ''}\n${stderr ?? ''}`;
-    const output = summarizeJsonLines(text);
-    if (!/odw_workflows/.test(text)) {
-      return {
-        ok: false,
-        command: 'tool-prompt',
-        output,
-        mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
-        reason: 'odw_workflows tool was not called',
-      };
+    const live = {};
+    if (wantsLiveHost(name)) {
+      live.tool = await runOpenCodeToolProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore });
     }
+    if (wantsEmbeddedLiveHost(name)) {
+      live.embedded = await runOpenCodeEmbeddedProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore });
+    }
+    const pieces = Object.values(live);
+    const primary = live.tool ?? live.embedded;
     return {
-      ok: true,
-      command: 'tool-prompt',
-      output,
+      ok: pieces.every((piece) => piece?.ok),
+      ...primary,
+      ...live,
       mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
     };
   } catch (error) {
@@ -283,6 +282,83 @@ async function runLiveHostProbe(name, found, { targetDir, home, port, mockProvid
       reason: firstLine(error.stderr || error.stdout || error.message),
     };
   }
+}
+
+async function runOpenCodeToolProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore }) {
+  const env = { ...process.env };
+  if (home) env.ODW_HOME = home;
+  if (port) env.ODW_DAEMON_PORT = String(port);
+  env.OPENAI_API_KEY = env.OPENAI_API_KEY || 'odw-smoke';
+  const { stdout, stderr } = await runFoundCommand(found, [
+    'run',
+    '--format',
+    'json',
+    '--model',
+    'openai/odw-smoke-model',
+    '--dir',
+    targetDir,
+    'Use the odw_workflows tool to list workflows known to the local daemon, then answer with one short sentence.',
+  ], { cwd: targetDir, env, timeout: liveHostProbeTimeoutMs() });
+  const text = `${stdout ?? ''}\n${stderr ?? ''}`;
+  const output = summarizeJsonLines(text);
+  if (!/odw_workflows/.test(text)) {
+    return {
+      ok: false,
+      command: 'tool-prompt',
+      output,
+      mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+      reason: 'odw_workflows tool was not called',
+    };
+  }
+  return {
+    ok: true,
+    command: 'tool-prompt',
+    output,
+    mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+  };
+}
+
+async function runOpenCodeEmbeddedProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore }) {
+  const env = { ...process.env };
+  if (home) env.ODW_HOME = home;
+  if (port) env.ODW_DAEMON_PORT = String(port);
+  env.OPENAI_API_KEY = env.OPENAI_API_KEY || 'odw-smoke';
+  const { stdout, stderr } = await runFoundCommand(found, [
+    'run',
+    '--format',
+    'json',
+    '--model',
+    'openai/odw-smoke-model',
+    '--dir',
+    targetDir,
+    'Use the odw_run tool with prompt "workflow: inspect two targets with verification through embedded OpenCode" and maxAgents 6, then answer with one short sentence.',
+  ], { cwd: targetDir, env, timeout: liveHostProbeTimeoutMs() });
+  const text = `${stdout ?? ''}\n${stderr ?? ''}`;
+  const output = summarizeJsonLines(text);
+  if (!/odw_run/.test(text)) {
+    return {
+      ok: false,
+      command: 'embedded-tool-prompt',
+      output,
+      mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+      reason: 'odw_run tool was not called',
+    };
+  }
+  if (!/EMBEDDED on your OpenCode model/i.test(text)) {
+    return {
+      ok: false,
+      command: 'embedded-tool-prompt',
+      output,
+      mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+      reason: 'odw_run did not report embedded OpenCode execution',
+    };
+  }
+  return {
+    ok: true,
+    command: 'embedded-tool-prompt',
+    output,
+    mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+  };
 }
 
 function runFoundCommand(found, args, options = {}) {
@@ -588,15 +664,17 @@ function respondToOpenCodeSmoke(req, res, body) {
   }
 
   const tools = toolNames(body);
-  const hasWorkflowTool = tools.includes('odw_workflows');
+  const prompt = promptText(body);
+  const toolName = requestedOpenCodeTool(tools, prompt);
   const hasToolResult = body.messages?.some((message) => message.role === 'tool');
+  const text = openCodeSmokeText({ hasToolResult, prompt });
   if (body.stream) {
-    return hasWorkflowTool && !hasToolResult
-      ? writeOpenAiToolCallStream(res, body.model)
-      : writeOpenAiTextStream(res, body.model, hasToolResult ? 'ODW live smoke saw odw_workflows complete.' : 'ODW workflows smoke');
+    return toolName && !hasToolResult
+      ? writeOpenAiToolCallStream(res, body.model, toolName, openCodeToolArguments(toolName))
+      : writeOpenAiTextStream(res, body.model, text);
   }
 
-  if (hasWorkflowTool && !hasToolResult) {
+  if (toolName && !hasToolResult) {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
       id: 'chatcmpl-odw-smoke',
@@ -607,9 +685,9 @@ function respondToOpenCodeSmoke(req, res, body) {
           role: 'assistant',
           content: null,
           tool_calls: [{
-            id: 'call_odw_workflows',
+            id: `call_${toolName}`,
             type: 'function',
-            function: { name: 'odw_workflows', arguments: '{}' },
+            function: { name: toolName, arguments: openCodeToolArguments(toolName) },
           }],
         },
         finish_reason: 'tool_calls',
@@ -628,7 +706,7 @@ function respondToOpenCodeSmoke(req, res, body) {
       index: 0,
       message: {
         role: 'assistant',
-        content: hasToolResult ? 'ODW live smoke saw odw_workflows complete.' : 'ODW workflows smoke',
+        content: text,
       },
       finish_reason: 'stop',
     }],
@@ -643,29 +721,59 @@ function toolNames(body) {
 
 function respondToOpenCodeResponsesSmoke(res, body) {
   const tools = toolNames(body);
-  const hasWorkflowTool = tools.includes('odw_workflows');
+  const prompt = promptText(body);
+  const toolName = requestedOpenCodeTool(tools, prompt);
   const hasToolResult = body.input?.some((item) => item.type === 'function_call_output' || item.role === 'tool');
+  const text = openCodeSmokeText({ hasToolResult, prompt });
   if (body.stream) {
-    return hasWorkflowTool && !hasToolResult
-      ? writeResponsesToolCallStream(res, body.model)
-      : writeResponsesTextStream(res, body.model, hasToolResult ? 'ODW live smoke saw odw_workflows complete.' : 'ODW workflows smoke');
+    return toolName && !hasToolResult
+      ? writeResponsesToolCallStream(res, body.model, toolName, openCodeToolArguments(toolName))
+      : writeResponsesTextStream(res, body.model, text);
   }
 
-  if (hasWorkflowTool && !hasToolResult) {
-    writeJsonResponse(res, responsePayload(body.model, [responsesFunctionItem()]));
+  if (toolName && !hasToolResult) {
+    writeJsonResponse(res, responsePayload(body.model, [responsesFunctionItem(toolName, openCodeToolArguments(toolName))]));
     return;
   }
-  writeJsonResponse(res, responsePayload(body.model, [responsesTextItem(hasToolResult ? 'ODW live smoke saw odw_workflows complete.' : 'ODW workflows smoke')]));
+  writeJsonResponse(res, responsePayload(body.model, [responsesTextItem(text)]));
 }
 
-function writeResponsesToolCallStream(res, model) {
-  const item = responsesFunctionItem();
+function requestedOpenCodeTool(tools, prompt = '') {
+  if (/\bodw_workflows\b/.test(prompt) && tools.includes('odw_workflows')) return 'odw_workflows';
+  if (/\bodw_run\b/.test(prompt) && tools.includes('odw_run')) return 'odw_run';
+  if (tools.includes('odw_run')) return 'odw_run';
+  if (tools.includes('odw_workflows')) return 'odw_workflows';
+  return null;
+}
+
+function openCodeToolArguments(toolName) {
+  if (toolName === 'odw_run') {
+    return JSON.stringify({
+      prompt: 'workflow: inspect two targets with verification through embedded OpenCode',
+      maxAgents: 6,
+    });
+  }
+  return '{}';
+}
+
+function openCodeSmokeText({ hasToolResult, prompt }) {
+  if (hasToolResult) return 'ODW live smoke saw tool execution complete.';
+  if (isOdwAgentPrompt(prompt)) return JSON.stringify(mockOutput(prompt));
+  return 'ODW workflows smoke';
+}
+
+function isOdwAgentPrompt(prompt) {
+  return /Merge verified results|final deliverable|Findings to review:|Enumerate|enumerate the concrete targets|Analyze ONE|Apply the requested change|inspect|audit/i.test(String(prompt));
+}
+
+function writeResponsesToolCallStream(res, model, toolName, args) {
+  const item = responsesFunctionItem(toolName, args);
   writeSseEvents(res, [
     { type: 'response.created', response: responsePayload(model, []) },
     { type: 'response.in_progress', response: responsePayload(model, []) },
     { type: 'response.output_item.added', output_index: 0, item: { ...item, status: 'in_progress', arguments: '' } },
-    { type: 'response.function_call_arguments.delta', item_id: item.id, output_index: 0, delta: '{}' },
-    { type: 'response.function_call_arguments.done', item_id: item.id, output_index: 0, arguments: '{}' },
+    { type: 'response.function_call_arguments.delta', item_id: item.id, output_index: 0, delta: args },
+    { type: 'response.function_call_arguments.done', item_id: item.id, output_index: 0, arguments: args },
     { type: 'response.output_item.done', output_index: 0, item },
     { type: 'response.completed', response: responsePayload(model, [item]) },
   ]);
@@ -688,14 +796,14 @@ function writeResponsesTextStream(res, model, text) {
   ]);
 }
 
-function responsesFunctionItem() {
+function responsesFunctionItem(toolName = 'odw_workflows', args = '{}') {
   return {
-    id: 'fc_odw_workflows',
+    id: `fc_${toolName}`,
     type: 'function_call',
     status: 'completed',
-    call_id: 'call_odw_workflows',
-    name: 'odw_workflows',
-    arguments: '{}',
+    call_id: `call_${toolName}`,
+    name: toolName,
+    arguments: args,
   };
 }
 
@@ -730,21 +838,21 @@ function writeJsonResponse(res, payload) {
   res.end(JSON.stringify(payload));
 }
 
-function writeOpenAiToolCallStream(res, model) {
+function writeOpenAiToolCallStream(res, model, toolName = 'odw_workflows', args = '{}') {
   writeOpenAiStream(res, [
     openAiChunk(model, { role: 'assistant' }),
     openAiChunk(model, {
       tool_calls: [{
         index: 0,
-        id: 'call_odw_workflows',
+        id: `call_${toolName}`,
         type: 'function',
-        function: { name: 'odw_workflows', arguments: '' },
+        function: { name: toolName, arguments: '' },
       }],
     }),
     openAiChunk(model, {
       tool_calls: [{
         index: 0,
-        function: { arguments: '{}' },
+        function: { arguments: args },
       }],
     }),
     openAiChunk(model, {}, 'tool_calls'),

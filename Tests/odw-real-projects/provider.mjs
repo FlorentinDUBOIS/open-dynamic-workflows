@@ -56,6 +56,45 @@ function normalizeContent(content, job) {
 }
 
 function mockJson(prompt) {
+  if (/approved.*confidence|Findings to review|Critique these findings|Reject if/i.test(prompt)) {
+    return {
+      approved: true,
+      confidence: 0.95,
+      critique: 'mock critic approved schema-valid project artifacts',
+      rejectedItems: [],
+    };
+  }
+  if (/product spec|users, features, workflows, successMetrics/i.test(prompt)) {
+    return {
+      summary: 'Production-ready open-source project artifact generated for ODW validation.',
+      users: ['learners', 'case workers', 'community administrators'],
+      features: ['intake workflow', 'portfolio builder', 'audit trail', 'exportable reports'],
+      workflows: ['collect evidence', 'review milestones', 'publish portfolio'],
+      successMetrics: ['completed portfolios', 'review turnaround time', 'accessibility pass rate'],
+    };
+  }
+  if (/technical architecture|API endpoints|data entities|architecture, endpoints, entities/i.test(prompt)) {
+    return {
+      architecture: 'Modular intake, rules, recommendation, audit, and reporting services.',
+      endpoints: ['/healthz', '/api/intake', '/api/recommendations', '/api/audit-events'],
+      entities: ['IntakeRecord', 'Recommendation', 'AuditEvent'],
+    };
+  }
+  if (/security controls|privacy risks|abuse cases|compliance notes/i.test(prompt)) {
+    return {
+      controls: ['input validation', 'role-based access', 'audit logging', 'data minimization'],
+      risks: ['privacy', 'accessibility', 'data quality'],
+      abuseCases: ['forged evidence', 'unauthorized access', 'misleading recommendations'],
+      compliance: ['privacy review', 'accessibility review', 'retention policy'],
+    };
+  }
+  if (/test plan|acceptance criteria|production readiness/i.test(prompt)) {
+    return {
+      tests: ['unit validation', 'integration workflow', 'security regression'],
+      acceptance: ['core workflow completes', 'audit trail is present', 'generated project tests pass'],
+      readiness: ['documented API', 'documented security posture', 'operational smoke tests'],
+    };
+  }
   return {
     summary: 'Production-ready open-source project artifact generated for ODW validation.',
     risks: ['privacy', 'accessibility', 'data quality'],

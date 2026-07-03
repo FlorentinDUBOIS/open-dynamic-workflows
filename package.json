@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "test": "npm test --workspaces --if-present",
+    "test:external": "node --test Tests/odw-endurance.test.mjs Tests/odw-real-projects/*.test.mjs",
     "coverage": "npm run coverage --workspaces --if-present",
     "lint": "eslint .",
     "audit:high": "npm audit --audit-level=high",

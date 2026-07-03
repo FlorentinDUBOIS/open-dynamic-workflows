@@ -1,9 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn } from 'node:child_process';
 import { projectCatalog } from './catalog.mjs';
 import { buildProject } from './builder.mjs';
+import { runGeneratedTests } from './test-runner.mjs';
 
 const root = process.cwd();
 const resultsRoot = join(root, 'Tests', 'results', 'odw-real-projects');
@@ -40,17 +39,6 @@ await writeFile(join(resultsRoot, `project-${project.id}-${project.slug}.md`), m
 await writeFile(join(resultsRoot, 'latest-one.json'), `${JSON.stringify(result, null, 2)}\n`);
 console.log(JSON.stringify({ id: result.id, slug: result.slug, ok: result.ok, providerCalls: result.providerCalls, projectDir: result.projectDir }, null, 2));
 process.exitCode = result.ok ? 0 : 1;
-
-async function runGeneratedTests(projectDir) {
-  if (!projectDir || !existsSync(projectDir)) return { exitCode: 1, stdout: '', stderr: 'project directory missing' };
-  const child = spawn(process.execPath, ['--test', 'test/'], { cwd: projectDir, stdio: ['ignore', 'pipe', 'pipe'] });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk) => { stdout += chunk; });
-  child.stderr.on('data', (chunk) => { stderr += chunk; });
-  const exitCode = await new Promise((resolve) => child.on('close', resolve));
-  return { exitCode, stdout: stdout.slice(-8000), stderr: stderr.slice(-8000) };
-}
 
 function markdown(result) {
   return `# ${result.id} ${result.title}\n\n- OK: ${result.ok}\n- Provider: ${result.providerMode}\n- Industry: ${result.industry}\n- Project directory: ${result.projectDir ?? 'n/a'}\n- Workflow ID: ${result.workflowId ?? 'n/a'}\n- Provider calls: ${result.providerCalls ?? 0}\n\n## Validation\n\n\`\`\`json\n${JSON.stringify(result.validation ?? {}, null, 2)}\n\`\`\`\n\n## Tests\n\nExit code: ${result.tests?.exitCode ?? 'n/a'}\n\n\`\`\`text\n${result.tests?.stdout ?? result.error ?? ''}\n${result.tests?.stderr ?? ''}\n\`\`\`\n`;
