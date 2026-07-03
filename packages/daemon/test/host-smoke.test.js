@@ -81,10 +81,16 @@ test('smoke-agent-hosts can require specific host evidence', () => {
   );
 });
 
-test('smoke-agent-hosts executes Windows command shims from paths with spaces', () => {
+test('smoke-agent-hosts executes command shims from paths with spaces', () => {
   const fakeBin = mkdtempSync(join(tmpdir(), 'odw fake bin '));
   try {
-    writeFileSync(join(fakeBin, 'code.cmd'), '@echo off\r\necho 9.9.9\r\n', 'utf8');
+    if (process.platform === 'win32') {
+      writeFileSync(join(fakeBin, 'code.cmd'), '@echo off\r\necho 9.9.9\r\n', 'utf8');
+    } else {
+      const file = join(fakeBin, 'code');
+      writeFileSync(file, '#!/bin/sh\necho 9.9.9\n', 'utf8');
+      chmodSync(file, 0o755);
+    }
     const pathValue = `${fakeBin}${delimiter}${process.env.PATH || ''}`;
     const output = execFileSync(
       process.execPath,
