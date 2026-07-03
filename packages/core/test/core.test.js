@@ -121,6 +121,19 @@ test('decompose: scrutiny-class prompts (review/bug/inspect) get a verification 
   }
 });
 
+test('decompose: explicit labelled agent fanout is deterministic, not discovery-dependent', () => {
+  const g = decompose('Split into exactly 20 independent micro-agents labeled A through T. Each agent should return one short synthetic readiness observation. Synthesize all 20 observations.');
+  assert.equal(g.root.explicitFanout.count, 20);
+  assert.deepEqual(g.tasks.map((t) => t.id), ['work', 'synthesize']);
+  const work = g.tasks[0];
+  assert.equal(work.parallelizable, true);
+  assert.equal(work.fanoutSource, undefined);
+  assert.equal(work.fanoutItems.length, 20);
+  assert.deepEqual(work.fanoutItems.slice(0, 3).map((item) => item.label), ['A', 'B', 'C']);
+  assert.equal(work.fanoutItems.at(-1).label, 'T');
+  assert.equal(g.root.estimatedTotalAgents, 21, 'twenty worker agents plus one synthesis agent');
+});
+
 test('decompose: external graph is validated (unknown dep rejected)', () => {
   assert.throws(
     () => decompose('x', { graph: { tasks: [{ id: 'a', dependencies: ['ghost'] }] } }),
@@ -264,6 +277,18 @@ test('createPlan: maxAgents is a hard runtime cap, not just an estimate hint', a
   assert.match(plan.script, /__odw_takeAgentSlots\(work_items_all\.length, "Work", 4\)/);
   assert.match(plan.script, /work_items_all\.slice\(0, work_slots\)/);
   assert.match(plan.script, /__odw_takeAgentSlots\(verify_critics\.length, "Verify critics", 1\)/);
+  new Function(plan.script);
+});
+
+test('createPlan: explicit labelled fanout compiles fixed work items without a discovery agent', async () => {
+  const plan = await createPlan('workflow: Split into exactly 20 independent micro-agents labeled A through T. Each agent should return one short synthetic readiness observation. Synthesize all 20 observations.', {
+    strategy: { concurrency: { max: 20 } },
+  });
+  assert.equal(plan.estimate.totalAgents, 21);
+  assert.deepEqual(plan.taskGraph.tasks.map((t) => t.id), ['work', 'synthesize']);
+  assert.doesNotMatch(plan.script, /Enumerate the concrete targets/);
+  assert.match(plan.script, /const items = \[\{"label":"A"/);
+  assert.match(plan.script, /"label":"T"/);
   new Function(plan.script);
 });
 

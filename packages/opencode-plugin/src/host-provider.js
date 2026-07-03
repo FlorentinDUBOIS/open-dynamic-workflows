@@ -15,6 +15,9 @@
  *  - there is NO body.format / json_schema field — structured output is handled by
  *    the queue's existing schema-suffix + tolerant extractJson cascade upstream.
  *  - body.system is a first-class field for the system prompt.
+ *  - body.agent defaults to "title": live OpenCode agents like "build" expose
+ *    native tools, and those native tool-call turns steal the ODW text-protocol
+ *    response. Set ODW_OPENCODE_AGENT or opts.agent to override deliberately.
  *  - session.prompt resolves (does NOT reject) on upstream failure, with empty
  *    parts and the error in payload.info.error.
  *
@@ -32,6 +35,8 @@
  * the workflow. Bulk deletion after the run (the pattern the original pool used)
  * is race-free.
  */
+
+const DEFAULT_TEXT_AGENT = 'title';
 
 export function createOpencodeBackend(client, opts = {}) {
   const created = []; // single-use child sessions, bulk-deleted at dispose()
@@ -63,6 +68,8 @@ export function createOpencodeBackend(client, opts = {}) {
     const body = {
       parts: [{ type: 'text', text: String(job.prompt ?? '') }],
     };
+    const agent = opts.agent ?? process.env.ODW_OPENCODE_AGENT ?? DEFAULT_TEXT_AGENT;
+    if (agent) body.agent = String(agent);
     if (job.systemPrompt) body.system = String(job.systemPrompt);
     // model OMITTED → inherit the user's configured OpenCode model/auth (keyless).
     // Only force a specific model when explicitly requested as "providerID/modelID".
@@ -85,9 +92,14 @@ export function createOpencodeBackend(client, opts = {}) {
     }
     // An unreachable/failed upstream makes session.prompt RESOLVE with zero
     // text and an error in info (verified live: ConnectionRefused → parts=[]).
-    // Only a host-reported error is retryable infrastructure failure; a
-    // legitimately-empty reply (no error) is returned as-is and left to the
-    // queue's schema-correction retry, which can tell the model what it expected.
+    // Native OpenCode tool-call turns also resolve with no ODW text-protocol
+    // JSON. Treat them as retryable host-protocol failures so they do not stall
+    // the embedded queue as empty schema-correction replies.
+    if (!text && hasNativeToolTurn(parts, payload)) {
+      const err = new Error('opencode backend: native tool call returned without text-protocol JSON; retry with a plain text agent or set ODW_OPENCODE_AGENT');
+      err.code = 'service_unavailable';
+      throw err;
+    }
     if (!text && payload.info?.error) {
       const err = new Error(`opencode backend: empty reply — host error: ${JSON.stringify(payload.info.error).slice(0, 200)}`);
       err.code = 'service_unavailable';
@@ -107,4 +119,9 @@ export function createOpencodeBackend(client, opts = {}) {
   }
 
   return { invoke, dispose };
+}
+
+function hasNativeToolTurn(parts, payload) {
+  if (parts.some((part) => part?.type === 'tool' || part?.type === 'tool_use' || part?.tool)) return true;
+  return payload?.finish === 'tool-calls' || payload?.info?.finish === 'tool-calls';
 }

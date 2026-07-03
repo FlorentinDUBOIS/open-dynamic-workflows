@@ -1,9 +1,9 @@
 ---
 name: odw
-description: Dynamic multi-agent workflows for Zed Agent. Use when the user says "ultracode", "workflow:", "/deep-research", or wants broad multi-file work with planning, parallel execution, verification, or crash-resume.
+description: Dynamic multi-agent workflows for Zed Agent and zcode. Use when the user says "ultracode", "workflow:", "/deep-research", or wants broad multi-file work with planning, parallel execution, verification, or crash-resume.
 ---
 
-# Open Dynamic Workflows for Zed Agent
+# Open Dynamic Workflows for Zed Agent and zcode
 
 Use this skill when the user invokes `/odw`, says `ultracode`, says `workflow:`, or asks for large coding work that benefits from explicit planning, parallel agents, verification, budgets, or crash-resumable execution.
 
@@ -19,7 +19,7 @@ node scripts/daemon-bridge.js --check
 
 - Exit 0: use the daemon path.
 - Exit 1 with auth guidance: tell the user to copy `~/.odw/daemon.token` into `ODW_DAEMON_TOKEN` or the host setting.
-- Exit 1 because the daemon is offline: tell the user to run `odw-daemon start` or `odw-daemon doctor zed`.
+- Exit 1 because the daemon is offline: tell the user to run `odw-daemon start`, then `odw-daemon doctor zed` or `odw-daemon doctor zcode`.
 
 ## Daemon path
 
@@ -31,9 +31,9 @@ node scripts/daemon-bridge.js --check
    - `node scripts/daemon-bridge.js result <workflowId>`
 3. Report the workflow id, topology, agent count, cost/time estimate, and final synthesized result. Do not redo the same work manually while ODW is running it.
 
-## Zed-native fallback
+## Zed Agent and zcode-native fallback
 
-If the daemon is unavailable, state that full ODW requires the daemon, then use Zed Agent's native planning and editing flow:
+If the daemon is unavailable, state that full ODW requires the daemon, then use the native planning and editing flow in Zed Agent or zcode:
 
 1. Decompose into discovery -> parallel work -> adversarial verification -> synthesis.
 2. Keep independent work items narrow and structured.

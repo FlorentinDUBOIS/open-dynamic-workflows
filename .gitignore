@@ -22,6 +22,7 @@ Tests/results/
 
 # Machine-generated MCP/host configs (regenerate via `odw-daemon doctor`; contain per-checkout absolute paths)
 /.mcp.json
+/opencode.json
 /.cursor/mcp.json
 /.zed/settings.json
 /.opencode/plugins/odw.mjs

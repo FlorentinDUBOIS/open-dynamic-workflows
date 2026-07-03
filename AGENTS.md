@@ -1,7 +1,7 @@
 <!-- BEGIN open-dynamic-workflows -->
 ## Open Dynamic Workflows
 
-For Zed, route substantial workflow requests through the ODW MCP server when it is available.
+For generic MCP hosts, Kimi Code, Zed, and zcode-compatible agents, route substantial workflow requests through the ODW MCP server when it is available.
 
 Use ODW when the user says `workflow:`, `ultracode`, `/deep-research`, or asks for broad multi-file work that benefits from planning, parallel agents, verification, or crash-resumable execution.
 

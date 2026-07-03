@@ -182,8 +182,25 @@ function positiveInt(value) {
 
 function planOptions(args = {}, defaults = {}) {
   const explicitMaxAgents = positiveInt(args.maxAgents ?? process.env.ODW_MAX_AGENTS);
-  const maxAgents = explicitMaxAgents ?? positiveInt(defaults.maxAgents);
+  if (explicitMaxAgents) return { maxAgents: explicitMaxAgents };
+
+  const defaultMaxAgents = positiveInt(defaults.maxAgents);
+  const requestedWorkers = explicitRequestedAgentCount(args.prompt);
+  const maxAgents = requestedWorkers && defaultMaxAgents
+    ? Math.min(100, Math.max(defaultMaxAgents, requestedWorkers + 4))
+    : defaultMaxAgents;
   return maxAgents ? { maxAgents } : {};
+}
+
+function explicitRequestedAgentCount(prompt) {
+  const text = String(prompt ?? '');
+  const match =
+    text.match(/\b(?:split\s+into|spawn|spin(?:\s+up)?|fan\s+out|run|launch|create|use)\s+(?:exactly\s+)?(\d{1,3})\s+(?:independent\s+)?(?:micro[-\s]?)?(?:agents?|workers?|subagents?)\b/i) ||
+    text.match(/\bexactly\s+(\d{1,3})\s+(?:independent\s+)?(?:micro[-\s]?)?(?:agents?|workers?|subagents?)\b/i) ||
+    text.match(/\b(\d{1,3})\s+(?:independent\s+)?(?:micro[-\s]?)?(?:agents?|workers?|subagents?)\b/i);
+  if (!match) return undefined;
+  const n = Math.floor(Number(match[1]));
+  return Number.isFinite(n) && n > 1 ? n : undefined;
 }
 
 // Recursion guard (verified necessary live on CLI 1.2.27): the chat.message
@@ -230,7 +247,7 @@ async function runEmbedded(client, effective, directory, options = {}) {
     const orchestrator = createEmbeddedOrchestrator({ invoke: backend.invoke, maxConcurrency: 4 });
     const { workflowId, result, plan } = await orchestrator.run(
       effective.cleanPrompt,
-      { cwd: directory, ...planOptions(options, { maxAgents: DEFAULT_EMBEDDED_MAX_AGENTS }) }
+      { cwd: directory, ...planOptions({ ...options, prompt: effective.cleanPrompt }, { maxAgents: DEFAULT_EMBEDDED_MAX_AGENTS }) }
     );
     if (process.env.ODW_DEBUG) console.error(`[odw] embedded ran workflow=${workflowId} elapsed=${Date.now() - startedAt}ms resultType=${typeof result}`);
     const rendered = typeof result === 'string'

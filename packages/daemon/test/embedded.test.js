@@ -215,6 +215,66 @@ test('embedded: prompt runs honor maxAgents with the real planner and host backe
   assert.equal(prompts.length, 6, '1 discovery + 1 capped work item + 3 critics + 1 synthesis');
 });
 
+test('embedded: explicit labelled fanout dispatches every requested worker without discovery', async () => {
+  const prompts = [];
+  const workerLabels = [];
+  const orch = createEmbeddedOrchestrator({
+    invoke: async (job) => {
+      prompts.push(job.prompt);
+      if (/Enumerate the concrete targets/.test(job.prompt)) {
+        return '{"items":["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T"]}';
+      }
+      if (/Find false positives|Challenge the severity|What is MISSING/.test(job.prompt)) {
+        return '{"approved":true,"confidence":0.9,"critique":"","rejectedItems":[]}';
+      }
+      if (/Merge verified results|Merge aggregated results/.test(job.prompt)) {
+        return '{"summary":"done","details":[]}';
+      }
+      const label = job.prompt.match(/"label":"([A-Z])"/)?.[1] ?? '?';
+      workerLabels.push(label);
+      if (/Analyze ONE target/.test(job.prompt)) return '{"findings":[],"confidence":0.9}';
+      return JSON.stringify({ label, result: `observation-${label}`, confidence: 0.9 });
+    },
+    maxConcurrency: 20,
+  });
+
+  const { status, result, plan: planned } = await orch.run(
+    'workflow: Split into exactly 20 independent micro-agents labeled A through T. Each agent should return one short synthetic readiness observation. Synthesize all 20 observations.',
+    { maxAgents: 21 }
+  );
+  assert.equal(status, 'completed');
+  assert.equal(result.summary, 'done');
+  assert.equal(planned.estimate.totalAgents, 21);
+  assert.equal(prompts.some((p) => /Enumerate the concrete targets/.test(p)), false);
+  assert.deepEqual(workerLabels, 'ABCDEFGHIJKLMNOPQRST'.split(''));
+});
+
+test('embedded: explicit labelled fanout preserves failed worker slots for synthesis', async () => {
+  let synthesisContext;
+  const orch = createEmbeddedOrchestrator({
+    invoke: async (job) => {
+      if (/ Context: /.test(job.prompt)) {
+        synthesisContext = JSON.parse(job.prompt.split(' Context: ')[1].split('\n\nRespond with ONLY')[0]);
+        return '{"summary":"done","details":[]}';
+      }
+      const label = job.prompt.match(/"label":"([A-Z])"/)?.[1] ?? '?';
+      if (label === 'C') return 'not json';
+      return JSON.stringify({ label, result: `observation-${label}`, confidence: 0.9 });
+    },
+    maxConcurrency: 5,
+    maxAttempts: 1,
+  });
+
+  const { status } = await orch.run(
+    'workflow: Split into exactly 5 independent agents labeled A through E. Each agent should return one short synthetic readiness observation. Synthesize all 5 observations.',
+    { maxAgents: 6 }
+  );
+  assert.equal(status, 'completed');
+  assert.equal(synthesisContext.work.length, 5);
+  assert.deepEqual(synthesisContext.work.map((item) => item.label), ['A', 'B', 'C', 'D', 'E']);
+  assert.equal(synthesisContext.work[2].__odw_failed, true);
+});
+
 test('memory store: round-trips a workflow, nodes, totals, checkpoints', () => {
   const s = createMemoryStore();
   s.insertWorkflow({ workflow_id: 'wf1', status: 'running', root_prompt: 'p', compiled_script: 's', execution_strategy: '{}', topology: 'hybrid', total_agents: 2, budget_max_usd: 10 });

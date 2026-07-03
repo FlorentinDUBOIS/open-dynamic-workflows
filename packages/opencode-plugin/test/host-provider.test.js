@@ -25,6 +25,7 @@ test('opencode backend: maps a job onto session.prompt — omits model (keyless)
   assert.equal(r.text, 'reply for p1');
   const sent = client.calls[0].body;
   assert.equal(sent.system, 'be brief', 'system prompt uses the first-class field');
+  assert.equal(sent.agent, 'title', 'embedded ODW child sessions use a plain text host agent by default so OpenCode native tools do not steal the text-protocol turn');
   assert.equal(sent.model, undefined, 'model OMITTED → inherits the user\'s configured OpenCode model (the keyless win)');
   assert.equal(sent.noReply, undefined, 'noReply must NOT be set — noReply:true makes session.prompt echo the user parts back without generating (verified live on CLI 1.2.27)');
   assert.equal(sent.parts[0].text, 'p1');
@@ -60,6 +61,14 @@ test('opencode backend: forces an explicit providerID/modelID only when asked', 
   await backend.dispose();
 });
 
+test('opencode backend: explicit agent overrides the default plain text agent', async () => {
+  const client = mockClient(() => ({ parts: [{ type: 'text', text: 'ok' }] }));
+  const backend = createOpencodeBackend(client, { agent: 'build' });
+  await backend.invoke({ prompt: 'p' });
+  assert.equal(client.calls[0].body.agent, 'build');
+  await backend.dispose();
+});
+
 test('opencode backend: errors clearly when no session can be created', async () => {
   const client = { session: { prompt: async () => ({ parts: [] }) } }; // no create
   const backend = createOpencodeBackend(client);
@@ -83,6 +92,23 @@ test('opencode backend: empty reply WITH a host error throws retryable service_u
     () => backend.invoke({ prompt: 'p' }),
     (err) => err.code === 'service_unavailable' && /ConnectionRefused/.test(err.message),
     'an upstream failure resolves with empty parts + info.error (verified live) and must surface as a retryable error'
+  );
+  await backend.dispose();
+});
+
+test('opencode backend: native OpenCode tool-call turns are retryable host protocol errors', async () => {
+  const client = mockClient(() => ({
+    parts: [
+      { type: 'reasoning', text: 'I will inspect files.' },
+      { type: 'tool', tool: 'glob', state: { status: 'completed' } },
+    ],
+    info: { finish: 'tool-calls' },
+  }));
+  const backend = createOpencodeBackend(client);
+  await assert.rejects(
+    () => backend.invoke({ prompt: 'p' }),
+    (err) => err.code === 'service_unavailable' && /native tool/i.test(err.message),
+    'native OpenCode tool calls produce no text-protocol JSON and must be retried or avoided'
   );
   await backend.dispose();
 });

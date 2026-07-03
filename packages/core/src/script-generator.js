@@ -72,7 +72,7 @@ function serialAgentsAfter(tasks, index) {
 
 function serialAgentCount(task) {
   if (task.type === 'verification') return 3;
-  if (task.parallelizable && task.fanoutSource) return 0;
+  if (task.parallelizable && (task.fanoutSource || task.fanoutItems?.length)) return 0;
   return 1;
 }
 
@@ -97,11 +97,17 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
   lines.push(`  // ─── ${phaseName} (${task.type}) ───`);
   lines.push(`  phase(${JSON.stringify(phaseName)}, { estimatedAgents: ${task.parallelizable ? 'undefined' : 1} });`);
 
-  if (task.parallelizable && task.fanoutSource) {
-    const [sourceTask, sourceField] = task.fanoutSource.split('.');
-    const itemsExpr = sourceField
-      ? `(results[${JSON.stringify(sourceTask)}] && results[${JSON.stringify(sourceTask)}].${sourceField}) || []`
-      : `results[${JSON.stringify(sourceTask)}] || []`;
+  if (task.parallelizable && (task.fanoutSource || task.fanoutItems?.length)) {
+    const preserveFanoutFailures = !!task.fanoutItems?.length;
+    let itemsExpr;
+    if (task.fanoutItems?.length) {
+      itemsExpr = JSON.stringify(task.fanoutItems);
+    } else {
+      const [sourceTask, sourceField] = task.fanoutSource.split('.');
+      itemsExpr = sourceField
+        ? `(results[${JSON.stringify(sourceTask)}] && results[${JSON.stringify(sourceTask)}].${sourceField}) || []`
+        : `results[${JSON.stringify(sourceTask)}] || []`;
+    }
     const v = sanitizeKey(task.id);
     lines.push(`  {`);
     if (agentCapEnabled) {
@@ -118,13 +124,22 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
     lines.push(`    const ${v}_raw = await parallel(`);
     lines.push(`      items.map((item) => () => ${baseAgentCall(
       `${JSON.stringify(task.description + ' Item: ')} + JSON.stringify(item)`
-    )}.catch((e) => ({ __odw_failed: true, error: String((e && e.message) || e) }))),`);
+    )}.catch((e) => (${preserveFanoutFailures
+      ? '{ __odw_failed: true, label: item && item.label, item, error: String((e && e.message) || e) }'
+      : '{ __odw_failed: true, error: String((e && e.message) || e) }'
+    }))),`);
     lines.push(`      { maxConcurrency: ${strategy.concurrency.max} }`);
     lines.push(`    );`);
-    lines.push(`    const ${v}_ok = ${v}_raw.filter((r) => !(r && r.__odw_failed));`);
-    lines.push(`    const ${v}_dropped = ${v}_raw.length - ${v}_ok.length;`);
-    lines.push(`    if (${v}_dropped > 0) log('${phaseName}: ' + ${v}_dropped + '/' + ${v}_raw.length + ' items failed and were dropped', 'warn');`);
-    lines.push(`    results[${JSON.stringify(task.id)}] = ${v}_ok;`);
+    if (preserveFanoutFailures) {
+      lines.push(`    const ${v}_failed = ${v}_raw.filter((r) => r && r.__odw_failed).length;`);
+      lines.push(`    if (${v}_failed > 0) log('${phaseName}: ' + ${v}_failed + '/' + ${v}_raw.length + ' explicit fanout items failed and were preserved', 'warn');`);
+      lines.push(`    results[${JSON.stringify(task.id)}] = ${v}_raw;`);
+    } else {
+      lines.push(`    const ${v}_ok = ${v}_raw.filter((r) => !(r && r.__odw_failed));`);
+      lines.push(`    const ${v}_dropped = ${v}_raw.length - ${v}_ok.length;`);
+      lines.push(`    if (${v}_dropped > 0) log('${phaseName}: ' + ${v}_dropped + '/' + ${v}_raw.length + ' items failed and were dropped', 'warn');`);
+      lines.push(`    results[${JSON.stringify(task.id)}] = ${v}_ok;`);
+    }
     lines.push(`  }`);
   } else if (task.type === 'verification') {
     const upstream = task.dependencies[0] ?? 'work';

@@ -75,8 +75,11 @@ function mockHostClient() {
         let text;
         if (/Enumerate the concrete targets/.test(prompt)) text = '{"items":["a","b","c","d","e"]}';
         else if (/Find false positives|Challenge the severity|What is MISSING/.test(prompt)) text = '{"approved":true,"confidence":0.9,"critique":"","rejectedItems":[]}';
-        else if (/Merge verified results/.test(prompt)) text = '{"summary":"done","details":[]}';
-        else text = '{"findings":[],"confidence":0.9}';
+        else if (/Merge verified results|Merge aggregated results/.test(prompt)) text = '{"summary":"done","details":[]}';
+        else if (/"label":"([A-Z])"/.test(prompt)) {
+          const label = prompt.match(/"label":"([A-Z])"/)[1];
+          text = JSON.stringify({ label, result: `done-${label}`, confidence: 0.9 });
+        } else text = '{"findings":[],"confidence":0.9}';
         return { parts: [{ type: 'text', text }] };
       },
       delete: async ({ path }) => { deleted.push(path.id); },
@@ -190,6 +193,20 @@ test('plugin: embedded OpenCode runs default to a twenty-agent safety cap', asyn
   );
   assert.match(out, /EMBEDDED on your OpenCode model/);
   assert.match(out, /~20 agents/);
+});
+
+test('plugin: explicit twenty-worker prompt lifts only the implicit embedded cap', async () => {
+  const client = mockHostClient();
+  const hooks = await OdwPlugin({ directory: DIR, client });
+  const out = await hooks.tool.odw_run.execute(
+    { prompt: 'workflow: Split into exactly 20 independent micro-agents labeled A through T. Each agent should return one short synthetic readiness observation. Synthesize all 20 observations.' },
+    { directory: DIR }
+  );
+  assert.match(out, /EMBEDDED on your OpenCode model/);
+  assert.match(out, /~21 agents/);
+  const workerPrompts = client.prompts.filter((prompt) => /Run ONE requested agent/.test(prompt));
+  assert.equal(workerPrompts.length, 20);
+  assert.equal(client.deleted.length, 21, 'twenty workers plus synthesis are cleaned up');
 });
 
 // ── bearer-token auth ────────────────────────────────────────────────────────

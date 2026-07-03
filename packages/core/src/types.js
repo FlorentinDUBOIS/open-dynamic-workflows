@@ -19,6 +19,7 @@
  * @property {string[]} dependencies      node ids that must complete first
  * @property {boolean} parallelizable
  * @property {string} [fanoutSource]      array reference to iterate when parallelizable
+ * @property {object[]} [fanoutItems]     deterministic items to iterate when parallelizable
  * @property {string} role                AgentRole.id
  * @property {object} expectedOutputSchema JSON Schema
  * @property {number} estimatedTokens
@@ -29,6 +30,7 @@
  * @property {{id: "root", prompt: string, complexity: Complexity,
  *            estimatedTotalAgents: number, estimatedCostUSD: number,
  *            estimatedDurationMinutes: number,
+ *            explicitFanout?: {count: number, labels: string[]},
  *            agentCap?: {maxAgents: number, serialAgents: number, capped: boolean}}} root
  * @property {TaskNode[]} tasks
  */

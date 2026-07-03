@@ -1,9 +1,9 @@
 ---
 name: ultracode
-description: Ultracode-style dynamic workflows for Zed Agent. Use when the user says "ultracode", "workflow:", "/deep-research", or wants broad multi-file work with planning, parallel execution, verification, or crash-resume.
+description: Ultracode-style dynamic workflows for Zed Agent and zcode. Use when the user says "ultracode", "workflow:", "/deep-research", or wants broad multi-file work with planning, parallel execution, verification, or crash-resume.
 ---
 
-# Ultracode Through Open Dynamic Workflows for Zed Agent
+# Ultracode Through Open Dynamic Workflows for Zed Agent and zcode
 
 Use this skill when the user invokes `/ultracode`, says `ultracode`, says `workflow:`, or asks for large coding work that benefits from explicit planning, parallel agents, verification, budgets, or crash-resumable execution.
 
@@ -19,7 +19,7 @@ node scripts/daemon-bridge.js --check
 
 - Exit 0: use the daemon path.
 - Exit 1 with auth guidance: tell the user to copy `~/.odw/daemon.token` into `ODW_DAEMON_TOKEN` or the host setting.
-- Exit 1 because the daemon is offline: tell the user to run `odw-daemon start` or `odw-daemon doctor zed`.
+- Exit 1 because the daemon is offline: tell the user to run `odw-daemon start`, then `odw-daemon doctor zed` or `odw-daemon doctor zcode`.
 
 ## Daemon Path
 
@@ -31,8 +31,8 @@ node scripts/daemon-bridge.js --check
    - `node scripts/daemon-bridge.js result <workflowId>`
 3. Report the workflow id, topology, agent count, cost/time estimate, and final synthesized result. Do not redo the same work manually while ODW is running it.
 
-## Zed-Native Fallback
+## Zed Agent and zcode Native Fallback
 
-If the daemon is unavailable, state that full ultracode requires the daemon, then use Zed Agent's native planning and editing flow: discovery -> parallel work -> adversarial verification -> synthesis.
+If the daemon is unavailable, state that full ultracode requires the daemon, then use the native planning and editing flow in Zed Agent or zcode: discovery -> parallel work -> adversarial verification -> synthesis.
 
 Never include secrets in prompts, plans, logs, or workflow artifacts.

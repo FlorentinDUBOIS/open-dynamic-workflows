@@ -15,7 +15,7 @@ export function selectTopology(taskGraph) {
   const types = new Set(tasks.map((t) => t.type));
   const hasVerification = types.has('verification');
   const hasMutation = types.has('mutation');
-  const fanout = tasks.some((t) => t.parallelizable && t.fanoutSource);
+  const fanout = tasks.some((t) => t.parallelizable && (t.fanoutSource || t.fanoutItems?.length));
   const sequentialChain = tasks.every(
     (t, i) => i === 0 || t.dependencies.includes(tasks[i - 1].id)
   );
