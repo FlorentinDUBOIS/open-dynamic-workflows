@@ -766,8 +766,11 @@ function checkCodexMarketplace(label, path) {
     ? json.plugins.find((plugin) => plugin?.name === 'odw')
     : null;
   if (!entry) return check(false, label, path, 'missing odw plugin entry');
-  if (entry.source?.type !== 'local') return check(false, label, path, 'expected local source');
+  if (json.name !== 'personal') return check(false, label, path, 'expected personal marketplace name');
+  if (entry.source?.source !== 'local') return check(false, label, path, 'expected local source');
   if (entry.source?.path !== './.codex/plugins/odw') return check(false, label, path, 'expected path ./.codex/plugins/odw');
+  if (entry.policy?.installation !== 'AVAILABLE') return check(false, label, path, 'expected installation AVAILABLE');
+  if (entry.policy?.authentication !== 'ON_INSTALL') return check(false, label, path, 'expected authentication ON_INSTALL');
   return check(true, label, path, 'ready');
 }
 
@@ -778,12 +781,17 @@ function check(ok, label, path, message) {
 function installCodexMarketplace({ home = homedir() } = {}) {
   const path = codexMarketplacePath({ home });
   const current = readJson(path, {});
+  current.name = current.name || 'personal';
+  current.interface = objectOrEmpty(current.interface);
+  current.interface.displayName = current.interface.displayName || 'Personal';
   const plugins = Array.isArray(current.plugins)
     ? current.plugins.filter((plugin) => plugin?.name !== 'odw')
     : [];
   plugins.push({
     name: 'odw',
-    source: { type: 'local', path: './.codex/plugins/odw' },
+    source: { source: 'local', path: './.codex/plugins/odw' },
+    policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+    category: 'Productivity',
   });
   current.plugins = plugins;
   writeJson(path, current);

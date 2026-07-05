@@ -330,10 +330,14 @@ test('installCodexPlugin installs a Codex plugin bundle and personal marketplace
     assert.ok(pluginMcp.mcpServers.odw.args[0].includes('mcp-server'));
 
     const marketplace = JSON.parse(readFileSync(join(home, '.agents', 'plugins', 'marketplace.json'), 'utf8'));
+    assert.equal(marketplace.name, 'personal');
+    assert.equal(marketplace.interface.displayName, 'Personal');
     assert.deepEqual(marketplace.plugins.map((plugin) => plugin.name).sort(), ['keep-me', 'odw']);
     assert.deepEqual(marketplace.plugins.find((plugin) => plugin.name === 'odw'), {
       name: 'odw',
-      source: { type: 'local', path: './.codex/plugins/odw' },
+      source: { source: 'local', path: './.codex/plugins/odw' },
+      policy: { installation: 'AVAILABLE', authentication: 'ON_INSTALL' },
+      category: 'Productivity',
     });
   } finally {
     rmSync(home, { recursive: true, force: true });

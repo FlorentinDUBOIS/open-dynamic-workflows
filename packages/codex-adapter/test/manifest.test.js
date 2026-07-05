@@ -20,6 +20,8 @@ test('.codex-plugin/plugin.json marketplace manifest is valid and in sync', () =
   assert.equal(manifest.license, legacy.license);
   assert.equal(manifest.skills, './skills/');
   assert.equal(manifest.mcpServers, './.mcp.json');
+  assert.equal(manifest.scripts, undefined, 'scripts are packaged but not declared in Codex plugin.json');
+  assert.ok(existsSync(join(root, '.mcp.json')), 'source plugin must include the MCP config referenced by plugin.json');
   assert.ok(manifest.version, 'marketplace manifest must declare a version');
   assert.ok(manifest.interface && manifest.interface.displayName, 'interface.displayName required for marketplace listings');
 });
