@@ -1,0 +1,34 @@
+title: "Host validation: "
+labels: ["host-validation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to report whether ODW works on your agentic coder. Evidence beats vibes.
+  - type: input
+    id: host
+    attributes:
+      label: Host and version
+      placeholder: "OpenCode 1.2.27"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: ODW commit
+      placeholder: "git rev-parse --short HEAD"
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: Paste `npm run smoke:hosts -- --json`, `doctor`, or workflow output.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: verdict
+    attributes:
+      label: What should maintainers know?
+      placeholder: "What worked, what failed, what was confusing?"

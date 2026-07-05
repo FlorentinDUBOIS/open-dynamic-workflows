@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible ODW defect.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing ODW. Please include enough detail for maintainers to reproduce the failure locally.
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: Paste `git rev-parse --short HEAD` or the release/tag you used.
+      placeholder: "29bbf3a"
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options:
+        - OpenCode
+        - Codex
+        - Cursor
+        - Antigravity
+        - VS Code
+        - Zed/zcode
+        - Gemini CLI
+        - Kimi
+        - Daemon only
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      description: Include the exact commands and relevant output.
+      render: shell
+      placeholder: |
+        npm ci
+        npm test
+        npm run smoke:hosts -- --json
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Node version, host version, model/provider path, and anything unusual.
+      placeholder: "Windows 11, Node 22.17.0, OpenCode 1.2.27, Ollama local endpoint"
+    validations:
+      required: true

@@ -200,11 +200,11 @@ Good first tasks (from TECH_DEBT): add a `session.idle` progress push to the Ope
 - Design tokens: `design-system/MASTER.md`
 - External docs used: QuickJS-emscripten (github.com/justjake/quickjs-emscripten), `@opencode-ai/plugin` & SDK type definitions, Anthropic Messages API, OpenAI Chat Completions, Ollama API, GitHub REST repos API.
 
-## 17. 🤖 Studio Prime Continuation
+## 17. 🤖 Phase-Gated Continuation
 
-This project was built with Studio Prime, an autonomous phase-gated engineering workflow.
+This repo keeps archived phase-gated engineering notes for maintainers who want to continue the same style of careful implementation and adversarial review.
 
-- **Resume:** run `claude` in this directory and say **"Continue Studio Prime"**. State lives in `.studio/` (outside the product repo, in the parent workspace).
+- **Resume:** use your preferred agentic coder in this directory and continue from the repo state plus the notes in this file. Historical phase state, when present, lives in `.studio/` outside the published product surface.
 - **Settings/hooks:** `.claude/settings.json` (workspace root) holds a PostToolUse audit hook; `.claude/settings.local.json` holds per-user permissions. Neither is required to develop ODW.
 - **Run an adversarial review manually:** dispatch the Task tool with `subagent_type: "general-purpose"` and the three-round (steelman → adversarial → synthesis) protocol, pointing it at the phase artifacts you want audited.
 - The phase verdicts live in `.studio/apex_red_team/reviews/phase[1-6]_verdict.{md,json}`.

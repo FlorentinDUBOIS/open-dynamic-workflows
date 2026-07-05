@@ -1,0 +1,64 @@
+name: Host validation
+description: Share proof that ODW works or fails on an agentic coder.
+title: "host validation: "
+labels: ["host-validation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ODW needs boring, reproducible host reports more than hype. Passing and failing results are both useful.
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options:
+        - OpenCode
+        - Codex
+        - Cursor
+        - Antigravity
+        - VS Code
+        - Zed/zcode
+        - Gemini CLI
+        - Kimi
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: host_version
+    attributes:
+      label: Host version
+      placeholder: "opencode 1.2.27"
+    validations:
+      required: true
+  - type: input
+    id: odw_commit
+    attributes:
+      label: ODW commit
+      placeholder: "git rev-parse --short HEAD"
+    validations:
+      required: true
+  - type: textarea
+    id: smoke
+    attributes:
+      label: Smoke output
+      description: Paste the relevant result from `npm run smoke:hosts -- --json`.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: model_path
+    attributes:
+      label: Model path tested
+      options:
+        - Host-native model
+        - ODW daemon with provider key
+        - ODW daemon with Ollama/local endpoint
+        - MCP bridge only
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Mention what worked, what failed, and whether a real workflow completed.

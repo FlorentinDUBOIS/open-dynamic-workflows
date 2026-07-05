@@ -1,0 +1,35 @@
+name: Adapter request
+description: Request or improve support for another agentic coding host.
+title: "adapter: "
+labels: ["adapter"]
+body:
+  - type: input
+    id: host
+    attributes:
+      label: Host name
+      placeholder: "Example: Windsurf, Aider, Continue"
+    validations:
+      required: true
+  - type: textarea
+    id: integration_surface
+    attributes:
+      label: Integration surface
+      description: Link to plugin, MCP, command, skill, extension, or scripting docs if available.
+      placeholder: "Docs URL and short notes"
+    validations:
+      required: true
+  - type: dropdown
+    id: model_access
+    attributes:
+      label: Does the host expose a native model/tool API?
+      options:
+        - Yes
+        - No
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Local proof or constraints
+      description: Share what you tried and any relevant command output.

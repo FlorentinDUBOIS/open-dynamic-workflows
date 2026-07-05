@@ -30,6 +30,6 @@ Coverage is enforced at 80% lines on `core` and `daemon`.
 - `packages/daemon/schema.sql` and `packages/core/src/types.js` are the source of truth for the SQLite schema and the type contracts; `packages/daemon/src/server.js` defines the HTTP routes. Change the contract there first, then the implementation.
 - Don't add a dependency to the sandbox boundary without a very good reason, and pin it exactly if you do.
 
-## How this repo was built
+## Where to start
 
-This project was built with an autonomous, phase-gated engineering workflow. The shipped code is the map: start from `packages/core` (pure planning logic) and `packages/daemon/src` (the engine), and read `HANDOFF.md` for the operational picture.
+The shipped code is the map: start from `packages/core` (pure planning logic) and `packages/daemon/src` (the engine), and read `HANDOFF.md` for the operational picture.
