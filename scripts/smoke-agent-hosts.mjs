@@ -250,9 +250,10 @@ function hasRequiredLiveEvidence(name, hosts) {
 async function runLiveHostProbe(name, found, { targetDir, home, port, mockProvider }) {
   const mockCallsBefore = mockProvider?.calls.length ?? 0;
   try {
-    if (name !== 'opencode') {
-      return { ok: false, reason: `no live probe implemented for ${name}` };
+    if (name === 'zcode') {
+      return await runZCodeLiveProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore });
     }
+    if (name !== 'opencode') return { ok: false, reason: `no live probe implemented for ${name}` };
     const live = {};
     if (wantsLiveHost(name)) {
       live.tool = await runOpenCodeToolProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore });
@@ -282,6 +283,38 @@ async function runLiveHostProbe(name, found, { targetDir, home, port, mockProvid
       reason: firstLine(error.stderr || error.stdout || error.message),
     };
   }
+}
+
+async function runZCodeLiveProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore }) {
+  const env = { ...process.env };
+  if (home) env.ODW_HOME = home;
+  if (port) env.ODW_DAEMON_PORT = String(port);
+  const { stdout, stderr } = await runFoundCommand(found, [
+    '--cwd',
+    targetDir,
+    '--json',
+    '--mode',
+    'plan',
+    '--prompt',
+    'Use the odw_plan tool to plan "workflow: inspect two targets with verification through zcode" with maxAgents 6, then answer with the plan id only.',
+  ], { cwd: targetDir, env, timeout: liveHostProbeTimeoutMs() });
+  const text = `${stdout ?? ''}\n${stderr ?? ''}`;
+  const output = summarizeJsonLines(text);
+  if (!/\bplan_[A-Za-z0-9_-]+\b/.test(text)) {
+    return {
+      ok: false,
+      command: 'zcode-prompt',
+      output,
+      mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+      reason: 'odw_plan did not return a plan id',
+    };
+  }
+  return {
+    ok: true,
+    command: 'zcode-prompt',
+    output,
+    mockCalls: (mockProvider?.calls.length ?? mockCallsBefore) - mockCallsBefore,
+  };
 }
 
 async function runOpenCodeToolProbe(found, { targetDir, home, port, mockProvider, mockCallsBefore }) {

@@ -210,6 +210,57 @@ test('smoke-agent-hosts can require the OpenCode embedded engine probe', () => {
   }
 });
 
+test('smoke-agent-hosts can run an opt-in zcode live MCP probe', () => {
+  const fakeBin = mkdtempSync(join(tmpdir(), 'odw-fake-zcode-'));
+  try {
+    if (process.platform === 'win32') {
+      writeFileSync(
+        join(fakeBin, 'zcode.cmd'),
+        '@echo off\r\n' +
+          'if "%1"=="--version" (\r\n  echo 0.15.0\r\n  exit /b 0\r\n)\r\n' +
+          'if "%ODW_DAEMON_PORT%"=="" (\r\n  echo missing daemon port 1>&2\r\n  exit /b 23\r\n)\r\n' +
+          'if "%ODW_HOME%"=="" (\r\n  echo missing odw home 1>&2\r\n  exit /b 24\r\n)\r\n' +
+          'if not exist ".mcp.json" (\r\n  echo missing mcp cwd config 1>&2\r\n  exit /b 25\r\n)\r\n' +
+          'echo {"type":"tool_use","part":{"tool":"odw_plan","state":{"status":"completed","output":"plan_fake mapreduce"}}}\r\n' +
+          'echo {"type":"text","part":{"text":"plan_fake ready"}}\r\n',
+        'utf8'
+      );
+    } else {
+      const file = join(fakeBin, 'zcode');
+      writeFileSync(
+        file,
+        '#!/bin/sh\n' +
+          'if [ "$1" = "--version" ]; then echo 0.15.0; exit 0; fi\n' +
+          'if [ -z "$ODW_DAEMON_PORT" ]; then echo missing daemon port >&2; exit 23; fi\n' +
+          'if [ -z "$ODW_HOME" ]; then echo missing odw home >&2; exit 24; fi\n' +
+          'if [ ! -f .mcp.json ]; then echo missing mcp cwd config >&2; exit 25; fi\n' +
+          "echo '{\"type\":\"tool_use\",\"part\":{\"tool\":\"odw_plan\",\"state\":{\"status\":\"completed\",\"output\":\"plan_fake mapreduce\"}}}'\n" +
+          "echo '{\"type\":\"text\",\"part\":{\"text\":\"plan_fake ready\"}}'\n",
+        'utf8'
+      );
+      chmodSync(file, 0o755);
+    }
+    const pathValue = `${fakeBin}${delimiter}${process.env.PATH || ''}`;
+    const output = execFileSync(
+      process.execPath,
+      [join(repoRoot, 'scripts', 'smoke-agent-hosts.mjs'), '--json', '--require-host', 'zcode', '--live-host', 'zcode'],
+      {
+        encoding: 'utf8',
+        cwd: repoRoot,
+        env: { ...process.env, PATH: pathValue, Path: pathValue },
+      }
+    );
+    const report = JSON.parse(output);
+    const zcode = report.hosts.find((host) => host.name === 'zcode');
+    assert.equal(zcode.status, 'ok');
+    assert.equal(zcode.live.ok, true);
+    assert.equal(zcode.live.command, 'zcode-prompt');
+    assert.match(zcode.live.output, /odw_plan|plan_fake/);
+  } finally {
+    safeRemoveTemp(fakeBin);
+  }
+});
+
 test('smoke-agent-hosts accepts version output from a slow Windows shim', { skip: process.platform !== 'win32' }, () => {
   const fakeBin = mkdtempSync(join(tmpdir(), 'odw slow fake bin '));
   try {
