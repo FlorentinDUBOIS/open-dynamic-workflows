@@ -124,6 +124,24 @@ test('odw_run with prompt plans then executes; cwd defaults to process.cwd()', a
   assert.equal(opts.cwd, process.cwd());
 });
 
+test('odw_run preserves the compact plan when execution config is not ready', async () => {
+  const client = stubClient({
+    exec: async () => {
+      throw new Error('daemon POST /workflows/exec -> 400: {"error":{"code":"provider_not_ready","message":"model configuration is not ready"}}');
+    },
+  });
+  const handlers = createToolHandlers(client);
+  const response = await handlers.odw_run({ prompt: 'workflow: split into exactly 20 agents labeled A through T', maxAgents: 24 });
+  assert.equal(response.isError, true);
+  const payload = JSON.parse(textOf(response));
+  assert.equal(payload.error, 'daemon POST /workflows/exec -> 400: {"error":{"code":"provider_not_ready","message":"model configuration is not ready"}}');
+  assert.equal(payload.plan.planId, 'plan_abc');
+  assert.equal(payload.plan.totalAgents, 12);
+  assert.match(payload.next, /odw_run/);
+  assert.match(payload.next, /plan_abc/);
+  assert.doesNotMatch(textOf(response), /SCRIPT_BODY_MUST_NOT_LEAK/, 'exec failures must not leak the compiled script');
+});
+
 test('odw_run wait=true polls result until terminal and returns the final result JSON', async () => {
   let polls = 0;
   const client = stubClient({

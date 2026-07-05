@@ -90,6 +90,21 @@ const text = (value) => ({
 
 const fail = (message) => ({ content: [{ type: 'text', text: `error: ${message}` }], isError: true });
 
+const execBlocked = (error, plan) => ({
+  content: [{
+    type: 'text',
+    text: JSON.stringify({
+      error: String(error?.message ?? error),
+      plan: planSummary(plan),
+      next:
+        `The plan is still cached. Fix the daemon model config, then execute with ` +
+        `odw_run {"planId": "${plan.planId}"}. On sampling-capable MCP clients, ` +
+        `ODW_MCP_SAMPLING=1 can run the embedded keyless path instead.`,
+    }, null, 2),
+  }],
+  isError: true,
+});
+
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function planSummary(plan) {
@@ -163,7 +178,12 @@ export function createToolHandlers(client, options = {}) {
         ({ plan } = await client.plan(prompt, planOptions));
         planCache.set(plan.planId, plan);
       }
-      const { workflowId } = await client.exec(plan, { cwd: cwd || process.cwd() });
+      let workflowId;
+      try {
+        ({ workflowId } = await client.exec(plan, { cwd: cwd || process.cwd() }));
+      } catch (error) {
+        return execBlocked(error, plan);
+      }
       if (!wait) {
         return text({ workflowId, status: 'running', plan: planSummary(plan) });
       }
