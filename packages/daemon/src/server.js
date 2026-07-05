@@ -116,7 +116,9 @@ export function createServer(deps) {
     if (!prompt || typeof prompt !== 'string') {
       throw Object.assign(new Error('body.prompt (string) is required'), { status: 400, code: 'bad_request' });
     }
-    ensureModelReady({ includePlanning: options?.useLlmPlanner === true });
+    // Heuristic planning is intentionally keyless, and even the optional LLM
+    // planner falls back to heuristics when unavailable. Execution is the hard
+    // provider-readiness gate.
     const plan = await planner(prompt, options ?? {});
     // Annotate whether the plan includes an adversarial verification node, so
     // the absence of the safety net is never silent.

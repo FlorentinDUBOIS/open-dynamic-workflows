@@ -94,7 +94,7 @@ test('integration: /config/check passes for the mock (usable model) and plan rep
   assert.ok(plan.taskGraph.tasks.some((t) => t.type === 'verification'));
 });
 
-test('integration: provider readiness fails before planning when the default model has no key', async () => {
+test('integration: heuristic planning does not require the default execution model key', async () => {
   const previousAnthropic = process.env.ANTHROPIC_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
   const badDaemon = await startDaemon({
@@ -114,13 +114,23 @@ test('integration: provider readiness fails before planning when the default mod
     assert.equal(check.ok, false, JSON.stringify(check));
     assert.match(check.reason, /anthropic provider requires an API key/);
 
-    const res = await fetch(`${badBase}/workflows/plan`, {
+    const planRes = await fetch(`${badBase}/workflows/plan`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...AUTH },
       body: JSON.stringify({ prompt: 'workflow: audit every file for bugs' }),
     });
-    assert.equal(res.status, 400);
-    const body = await res.json();
+    assert.equal(planRes.status, 200);
+    const { plan } = await planRes.json();
+    assert.equal(plan.hasVerification, true);
+    assert.ok(plan.script.includes('agent('), 'the heuristic plan still compiles an executable workflow');
+
+    const execRes = await fetch(`${badBase}/workflows/exec`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...AUTH },
+      body: JSON.stringify({ plan }),
+    });
+    assert.equal(execRes.status, 400);
+    const body = await execRes.json();
     assert.equal(body.error.code, 'provider_not_ready');
     assert.match(body.error.message, /default claude-sonnet-4-6/);
   } finally {

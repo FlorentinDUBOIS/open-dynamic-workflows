@@ -84,8 +84,8 @@ export function resolveProvider(model, config, opts = {}) {
 
 /**
  * Provider readiness is intentionally route/key only: no network calls, no
- * model probes. It catches deterministic config failures before planning or
- * execution spends time building a workflow.
+ * model probes. It catches deterministic config failures before execution or
+ * before optional model-backed planner calls spend time on unusable routes.
  *
  * @param {import('../config.js').DaemonConfig} config
  * @param {Array<{purpose: string, model: string, required?: boolean}>} entries
