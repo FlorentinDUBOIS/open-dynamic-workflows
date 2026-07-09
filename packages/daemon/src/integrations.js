@@ -131,6 +131,7 @@ export function installCodexPlugin({ home = homedir(), repoRoot = DEFAULT_REPO_R
   const dest = codexPluginPath({ home, repoRoot });
   ensureDir(dest);
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', '.codex-plugin'), join(dest, '.codex-plugin'));
+  copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'assets'), join(dest, 'assets'));
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'skills'), join(dest, 'skills'));
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'scripts'));
   copyFresh(join(repoRoot, 'packages', 'codex-adapter', 'scripts'), join(dest, 'skills', 'odw', 'scripts'));
@@ -436,6 +437,7 @@ function doctorChecksFor(kind, options = {}) {
           '"mcpServers": "./.mcp.json"',
         ]),
         checkMcpJson('codex plugin mcp config', join(codexPluginPath(options), '.mcp.json'), 'mcpServers', options),
+        checkExists('codex plugin icon', join(codexPluginPath(options), 'assets', 'icon.svg')),
         checkExists('codex plugin skill', join(codexPluginPath(options), 'skills', 'odw', 'SKILL.md')),
         checkExists('codex plugin daemon bridge', join(codexPluginPath(options), 'scripts', 'daemon-bridge.js')),
         checkExists('codex plugin skill bridge', join(codexPluginPath(options), 'skills', 'odw', 'scripts', 'daemon-bridge.js')),

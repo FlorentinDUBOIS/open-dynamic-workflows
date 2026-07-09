@@ -316,6 +316,7 @@ test('installCodexPlugin installs a Codex plugin bundle and personal marketplace
     assert.equal(result.kind, 'codex-plugin');
     assert.equal(result.path, pluginDir);
     assert.ok(existsSync(join(pluginDir, '.codex-plugin', 'plugin.json')));
+    assert.ok(existsSync(join(pluginDir, 'assets', 'icon.svg')));
     assert.ok(existsSync(join(pluginDir, 'skills', 'odw', 'SKILL.md')));
     assert.ok(existsSync(join(pluginDir, 'skills', 'ultracode', 'SKILL.md')));
     assert.ok(existsSync(join(pluginDir, 'scripts', 'daemon-bridge.js')));
@@ -324,6 +325,7 @@ test('installCodexPlugin installs a Codex plugin bundle and personal marketplace
 
     const manifest = JSON.parse(readFileSync(join(pluginDir, '.codex-plugin', 'plugin.json'), 'utf8'));
     assert.equal(manifest.mcpServers, './.mcp.json');
+    assert.equal(manifest.interface.composerIcon, './assets/icon.svg');
 
     const pluginMcp = JSON.parse(readFileSync(join(pluginDir, '.mcp.json'), 'utf8'));
     assert.equal(pluginMcp.mcpServers.odw.command, 'node');

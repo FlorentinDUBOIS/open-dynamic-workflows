@@ -24,6 +24,8 @@ test('.codex-plugin/plugin.json marketplace manifest is valid and in sync', () =
   assert.ok(existsSync(join(root, '.mcp.json')), 'source plugin must include the MCP config referenced by plugin.json');
   assert.ok(manifest.version, 'marketplace manifest must declare a version');
   assert.ok(manifest.interface && manifest.interface.displayName, 'interface.displayName required for marketplace listings');
+  assert.equal(manifest.interface.composerIcon, './assets/icon.svg');
+  assert.ok(existsSync(join(root, 'assets', 'icon.svg')), 'composerIcon must point to a bundled icon');
 });
 
 test('canonical skill folder exists with frontmatter and daemon steps', () => {

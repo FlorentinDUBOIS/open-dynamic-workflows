@@ -13,6 +13,7 @@
     "displayName": "Open Dynamic Workflows",
     "shortDescription": "Plan, orchestrate, and verify parallel AI coding agents.",
     "longDescription": "Open Dynamic Workflows (ODW) is an open-source dynamic multi-agent workflow engine for AI coding agents. It plans a task into a workflow graph, dispatches subtasks to parallel agents through a local daemon, and adversarially verifies their output before results are synthesized. Bring-your-own-model: Anthropic, OpenAI-compatible, or Ollama.",
+    "composerIcon": "./assets/icon.svg",
     "developerName": "open-dynamic-workflows contributors",
     "category": "Productivity",
     "capabilities": ["Interactive", "Read", "Write"],
