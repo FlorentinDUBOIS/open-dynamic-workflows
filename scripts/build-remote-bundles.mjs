@@ -12,14 +12,16 @@ mkdirSync(target, { recursive: true });
 
 const bundles = [
   {
-    entry: 'packages/opencode-plugin/src/remote.js',
+    entry: 'packages/opencode-plugin/src/server-entry.js',
     file: 'server.js',
     external: [],
+    exports: ['default'],
   },
   {
     entry: 'packages/opencode-plugin/src/tui.ts',
     file: 'tui.js',
     external: ['@opencode-ai/plugin/tui', '@opentui/solid', 'solid-js'],
+    exports: ['default'],
   },
 ];
 
@@ -33,7 +35,7 @@ try {
       '--outfile', path,
     ], { cwd: root, stdio: 'inherit' });
     canonicalize(path);
-    inspect(path, bundle.external);
+    inspect(path, bundle);
     if (check) {
       const tracked = join(output, bundle.file);
       if (!readFileSync(path).equals(readFileSync(tracked))) {
@@ -53,15 +55,37 @@ function canonicalize(path) {
   writeFileSync(path, canonical);
 }
 
-function inspect(path, allowedExternal) {
+function inspect(path, bundle) {
   const source = readFileSync(path, 'utf8');
   for (const forbidden of ['better-sqlite3', 'ODW_DAEMON_TOKEN', 'ODW_DAEMON_PORT', '127.0.0.1:7345', root]) {
     if (source.includes(forbidden)) throw new Error(`${path} contains forbidden runtime dependency ${forbidden}`);
   }
   const imports = [...source.matchAll(/from["']([^"']+)["']/g)].map((match) => match[1]);
   for (const specifier of imports) {
-    if (!specifier.startsWith('node:') && !allowedExternal.includes(specifier)) {
+    if (!specifier.startsWith('node:') && !bundle.external.includes(specifier)) {
       throw new Error(`${path} imports unexpected runtime package ${specifier}`);
     }
   }
+  const actual = readExports(source);
+  const expected = [...bundle.exports].sort();
+  if (actual.join(',') !== expected.join(',')) {
+    throw new Error(
+      `${path} exports ${actual.join(',') || '(nothing)'} but must export exactly ${expected.join(',')}; ` +
+      'OpenCode instantiates every export of a plugin module as a plugin factory, so a helper ' +
+      'exported here is called with the plugin input and its return value is used as the hooks object',
+    );
+  }
+}
+
+// Reads the export surface of a bundle. Bun emits one trailing `export{...}` statement per
+// ES module, so the last match is the module's real export list rather than a string literal.
+function readExports(source) {
+  const statements = [...source.matchAll(/\bexport\s*\{([^}]*)\}/g)];
+  const last = statements.at(-1);
+  const names = (last ? last[1].split(',') : [])
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.split(/\s+as\s+/).at(-1).trim());
+  if (/\bexport\s+default\b/.test(source)) names.push('default');
+  return [...new Set(names)].sort();
 }
