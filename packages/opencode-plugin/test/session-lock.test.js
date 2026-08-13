@@ -25,3 +25,15 @@ test('same session contends while independent sessions overlap and release', asy
 test('rejects session ids that can escape the lock root', async () => {
   await assert.rejects(() => acquireSessionLock('../escape', { root: '/tmp' }), /invalid ODW session id/);
 });
+
+test('fails explicitly when flock is unavailable', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'odw-lock-'));
+  try {
+    await assert.rejects(
+      () => acquireSessionLock('session-one', { root, flock: 'missing-odw-flock' }),
+      /spawn missing-odw-flock ENOENT/,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
