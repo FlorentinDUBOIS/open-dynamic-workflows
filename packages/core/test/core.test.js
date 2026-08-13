@@ -96,6 +96,20 @@ test('strategy: overrides merge deep and hard limits clamp', () => {
   assert.equal(s.retry.maxAttempts, 3); // untouched default survives
 });
 
+test('strategy: embedded-unbounded removes local quota and timeout caps only when explicit', () => {
+  const strategy = mergeStrategy({
+    mode: 'embedded-unbounded',
+    concurrency: { max: 500, default: 500 },
+    budget: { maxTokens: 1234, maxCostUSD: 1 },
+    timeouts: { perAgent: 2, perPhase: 3, total: 4 },
+  });
+  assert.equal(strategy.concurrency.max, null);
+  assert.equal(strategy.concurrency.default, null);
+  assert.equal(strategy.budget.maxTokens, null);
+  assert.equal(strategy.budget.maxCostUSD, null);
+  assert.deepEqual(strategy.timeouts, { perAgent: null, perPhase: null, total: null });
+});
+
 // ── decompose / topology / roles ─────────────────────────────────────────────
 
 test('decompose: audit prompt yields discovery→fanout work→verify→synthesize', () => {

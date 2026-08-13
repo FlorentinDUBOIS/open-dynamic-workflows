@@ -5,8 +5,11 @@
   "type": "module",
   "main": "src/index.js",
   "exports": {
-    ".": "./src/index.js"
+    ".": "./src/index.js",
+    "./remote": "./src/remote.js",
+    "./tui": "./src/tui.ts"
   },
+  "files": ["dist/server.js", "dist/tui.js"],
   "scripts": {
     "test": "node ../../scripts/run-node-tests.mjs"
   },

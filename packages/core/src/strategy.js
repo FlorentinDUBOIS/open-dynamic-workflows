@@ -13,10 +13,22 @@ const CEILINGS = {
 };
 
 /**
+ * Strategy modes. `bounded` is the default and applies every CEILINGS cap.
+ * `embedded-unbounded` is opt-in and reserved for the in-process embedded
+ * composition (a host such as OpenCode that owns its own token/cost/duration
+ * limits): it removes the ODW-local token, cost, duration, agent, and
+ * concurrency ceilings while keeping the safety FLOORS and the replan-recursion
+ * bound. The daemon server path never selects it, so daemon defaults are
+ * unchanged.
+ */
+export const STRATEGY_MODES = Object.freeze({ BOUNDED: 'bounded', EMBEDDED_UNBOUNDED: 'embedded-unbounded' });
+
+/**
  * @returns {import('./types.js').ExecutionStrategy}
  */
 export function defaultStrategy() {
   return {
+    mode: STRATEGY_MODES.BOUNDED,
     concurrency: { max: 16, default: 16 },
     checkpoint: { intervalSeconds: 30, onPhaseComplete: true },
     retry: {
@@ -53,10 +65,14 @@ export function defaultStrategy() {
 export function mergeStrategy(overrides) {
   const base = defaultStrategy();
   const merged = deepMerge(base, overrides ?? {});
-  merged.concurrency.max = clamp(merged.concurrency.max, 1, CEILINGS.maxConcurrency);
-  merged.concurrency.default = clamp(merged.concurrency.default, 1, merged.concurrency.max);
-  merged.budget.maxTokens = clamp(merged.budget.maxTokens, 1000, CEILINGS.maxTokens);
-  merged.budget.maxCostUSD = clamp(merged.budget.maxCostUSD, 0, CEILINGS.maxCostUSD);
+  const embeddedUnbounded = merged.mode === STRATEGY_MODES.EMBEDDED_UNBOUNDED;
+  if (![STRATEGY_MODES.BOUNDED, STRATEGY_MODES.EMBEDDED_UNBOUNDED].includes(merged.mode)) {
+    throw new Error(`unknown strategy mode: ${merged.mode}`);
+  }
+  merged.concurrency.max = embeddedUnbounded ? null : clamp(merged.concurrency.max, 1, CEILINGS.maxConcurrency);
+  merged.concurrency.default = embeddedUnbounded ? null : clamp(merged.concurrency.default, 1, merged.concurrency.max);
+  merged.budget.maxTokens = embeddedUnbounded ? null : clamp(merged.budget.maxTokens, 1000, CEILINGS.maxTokens);
+  merged.budget.maxCostUSD = embeddedUnbounded ? null : clamp(merged.budget.maxCostUSD, 0, CEILINGS.maxCostUSD);
   merged.budget.alertAtPercent = clamp(merged.budget.alertAtPercent, 1, 100);
   merged.retry.maxAttempts = clamp(merged.retry.maxAttempts, 1, 10);
   merged.context.safetyFactor = clamp(merged.context.safetyFactor, 0.5, 0.99);
@@ -64,9 +80,13 @@ export function mergeStrategy(overrides) {
   merged.context.maxCompactAttempts = clamp(merged.context.maxCompactAttempts, 1, 5);
   merged.replan.maxReplans = clamp(merged.replan.maxReplans, 0, CEILINGS.maxReplans);
   merged.replan.maxDepth = clamp(merged.replan.maxDepth, 0, CEILINGS.replanDepth);
-  merged.timeouts.perAgent = clamp(merged.timeouts.perAgent, 1, CEILINGS.totalSeconds);
-  merged.timeouts.perPhase = clamp(merged.timeouts.perPhase, merged.timeouts.perAgent, CEILINGS.totalSeconds);
-  merged.timeouts.total = clamp(merged.timeouts.total, merged.timeouts.perPhase, CEILINGS.totalSeconds);
+  if (embeddedUnbounded) {
+    merged.timeouts = { perAgent: null, perPhase: null, total: null };
+  } else {
+    merged.timeouts.perAgent = clamp(merged.timeouts.perAgent, 1, CEILINGS.totalSeconds);
+    merged.timeouts.perPhase = clamp(merged.timeouts.perPhase, merged.timeouts.perAgent, CEILINGS.totalSeconds);
+    merged.timeouts.total = clamp(merged.timeouts.total, merged.timeouts.perPhase, CEILINGS.totalSeconds);
+  }
   return merged;
 }
 

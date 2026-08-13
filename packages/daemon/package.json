@@ -16,13 +16,14 @@
     "coverage": "c8 --check-coverage --lines 80 --include \"src/**\" --exclude \"src/cli.js\" node ../../scripts/run-node-tests.mjs"
   },
   "dependencies": {
+    "@jitl/quickjs-singlefile-cjs-release-sync": "0.32.0",
     "ajv": "^8.20.0",
     "better-sqlite3": "^12.11.1",
     "commander": "^14.0.2",
     "express": "^5.2.1",
     "odw-core": "^0.1.0",
     "p-queue": "^9.3.0",
-    "quickjs-emscripten": "0.32.0",
+    "quickjs-emscripten-core": "0.32.0",
     "ws": "^8.21.0"
   },
   "engines": {

@@ -10,8 +10,8 @@ import { costFor } from 'odw-core';
  *          onAlert?: (type: "warning"|"exceeded", usage: object) => void}} options
  */
 export function createBudget(options) {
-  const maxTokens = Math.max(1, options.maxTokens);
-  const maxCostUSD = Math.max(0, options.maxCostUSD);
+  const maxTokens = options.maxTokens === null ? null : Math.max(1, options.maxTokens);
+  const maxCostUSD = options.maxCostUSD === null ? null : Math.max(0, options.maxCostUSD);
   const alertAt = (options.alertAtPercent ?? 80) / 100;
   let tokensUsed = 0;
   let costUSD = 0;
@@ -19,8 +19,8 @@ export function createBudget(options) {
   let stopped = false;
 
   const percentUsed = () => {
-    const byTokens = tokensUsed / maxTokens;
-    const byCost = maxCostUSD > 0 ? costUSD / maxCostUSD : 0;
+    const byTokens = maxTokens === null ? 0 : tokensUsed / maxTokens;
+    const byCost = maxCostUSD === null ? 0 : maxCostUSD > 0 ? costUSD / maxCostUSD : 0;
     return Math.max(byTokens, byCost);
   };
 

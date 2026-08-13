@@ -4,35 +4,41 @@ import { createOpencodeBackend } from '../src/host-provider.js';
 
 function mockClient(promptImpl) {
   const calls = [];
+  const creates = [];
   const deleted = [];
   let seq = 0;
   return {
     calls,
+    creates,
     deleted,
     session: {
-      create: async () => ({ id: `sess-${++seq}` }),
+      create: async ({ body }) => { creates.push(body); return { id: `sess-${++seq}` }; },
       prompt: async ({ path, body }) => { calls.push({ id: path.id, body }); return promptImpl(body); },
       delete: async ({ path }) => { deleted.push(path.id); },
     },
   };
 }
 
-test('opencode backend: maps a job onto session.prompt — omits model (keyless), uses system, reads parts', async () => {
+test('opencode backend: maps a job onto the selected parent agent, model and variant', async () => {
   const client = mockClient((body) => ({ parts: [{ type: 'text', text: 'reply for ' + body.parts[0].text }] }));
-  const backend = createOpencodeBackend(client);
+  const backend = createOpencodeBackend(client, { agent: 'build', model: 'openai/gpt-5.6-sol', parentSessionID: 'parent' });
 
-  const r = await backend.invoke({ prompt: 'p1', systemPrompt: 'be brief' });
+  const r = await backend.invoke({ prompt: 'p1', systemPrompt: 'be brief', variant: 'max', workflowId: 'wf', nodeId: 'node', role: 'analysis' });
   assert.equal(r.text, 'reply for p1');
   const sent = client.calls[0].body;
   assert.equal(sent.system, 'be brief', 'system prompt uses the first-class field');
-  assert.equal(sent.agent, 'title', 'embedded ODW child sessions use a plain text host agent by default so OpenCode native tools do not steal the text-protocol turn');
-  assert.equal(sent.model, undefined, 'model OMITTED → inherits the user\'s configured OpenCode model (the keyless win)');
+  assert.equal(sent.agent, 'build');
+  assert.deepEqual(sent.model, { providerID: 'openai', modelID: 'gpt-5.6-sol' });
+  assert.equal(sent.variant, 'max');
   assert.equal(sent.noReply, undefined, 'noReply must NOT be set — noReply:true makes session.prompt echo the user parts back without generating (verified live on CLI 1.2.27)');
   assert.equal(sent.parts[0].text, 'p1');
+  assert.equal(client.creates[0].parentID, 'parent');
+  assert.equal(client.creates[0].metadata.odw, true);
+  assert.equal(client.creates[0].metadata.odwWorkflowID, 'wf');
   await backend.dispose();
 });
 
-test('opencode backend: FRESH single-use session per invoke, bulk-deleted at dispose (no cross-agent history contamination, no delete-race)', async () => {
+test('opencode backend: retains fresh child sessions beneath the parent', async () => {
   const client = mockClient(() => ({ parts: [{ type: 'text', text: 'ok' }] }));
   const backend = createOpencodeBackend(client);
   await backend.invoke({ prompt: 'a' });
@@ -40,9 +46,9 @@ test('opencode backend: FRESH single-use session per invoke, bulk-deleted at dis
   await backend.invoke({ prompt: 'c' });
   const ids = client.calls.map((c) => c.id);
   assert.equal(new Set(ids).size, 3, 'every invoke runs in its own child session — without noReply, a reused session would leak each agent\'s conversation into the next');
-  assert.equal(client.deleted.length, 0, 'deletion is DEFERRED — an immediate per-call delete races OpenCode\'s internal async work on the session (live-verified NotFoundError + stall on 1.2.27)');
+  assert.equal(client.deleted.length, 0);
   await backend.dispose();
-  assert.deepEqual([...client.deleted].sort(), [...ids].sort(), 'dispose() bulk-deletes every single-use session');
+  assert.equal(client.deleted.length, 0, 'OpenCode recursively deletes retained children with their parent');
 });
 
 test('opencode backend: reads text from a {data:{parts}} wrapper too', async () => {
@@ -96,20 +102,18 @@ test('opencode backend: empty reply WITH a host error throws retryable service_u
   await backend.dispose();
 });
 
-test('opencode backend: native OpenCode tool-call turns are retryable host protocol errors', async () => {
+test('opencode backend: accepts native tool parts when OpenCode also returns final text', async () => {
   const client = mockClient(() => ({
     parts: [
       { type: 'reasoning', text: 'I will inspect files.' },
       { type: 'tool', tool: 'glob', state: { status: 'completed' } },
+      { type: 'text', text: '{"findings":[]}' },
     ],
     info: { finish: 'tool-calls' },
   }));
   const backend = createOpencodeBackend(client);
-  await assert.rejects(
-    () => backend.invoke({ prompt: 'p' }),
-    (err) => err.code === 'service_unavailable' && /native tool/i.test(err.message),
-    'native OpenCode tool calls produce no text-protocol JSON and must be retried or avoided'
-  );
+  const result = await backend.invoke({ prompt: 'p' });
+  assert.equal(result.text, '{"findings":[]}');
   await backend.dispose();
 });
 
@@ -121,10 +125,21 @@ test('opencode backend: empty reply WITHOUT a host error is returned as-is (left
   await backend.dispose();
 });
 
-test('opencode backend: sessions from failed invokes are still cleaned at dispose', async () => {
+test('opencode backend: sessions from failed invokes remain attached for inspection', async () => {
   const client = mockClient(() => { throw new Error('boom'); });
   const backend = createOpencodeBackend(client);
   await assert.rejects(() => backend.invoke({ prompt: 'p' }), /boom/);
   await backend.dispose();
-  assert.equal(client.deleted.length, 1, 'dispose cleans up sessions whose prompt failed');
+  assert.equal(client.deleted.length, 0);
+});
+
+test('opencode backend: refreshes the parent session permission for every child', async () => {
+  const client = mockClient(() => ({ parts: [{ type: 'text', text: 'ok' }] }));
+  let revision = 0;
+  client.session.get = async () => ({ data: { permission: [{ permission: 'bash', pattern: '*', action: revision++ ? 'allow' : 'deny' }] } });
+  const backend = createOpencodeBackend(client, { parentSessionID: 'parent', agent: 'build' });
+  await backend.invoke({ prompt: 'first' });
+  await backend.invoke({ prompt: 'second' });
+  assert.equal(client.creates[0].permission[0].action, 'deny');
+  assert.equal(client.creates[1].permission[0].action, 'allow');
 });

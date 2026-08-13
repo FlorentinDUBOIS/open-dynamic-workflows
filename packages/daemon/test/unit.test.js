@@ -120,6 +120,13 @@ test('budget: warning at 80%, hard stop at 100%', () => {
   assert.equal(budget.exceeded(), true);
 });
 
+test('budget: null token and cost limits disable ODW-local stopping', () => {
+  const budget = createBudget({ maxTokens: null, maxCostUSD: null, alertAtPercent: 80 });
+  budget.track('gpt-4o', 10_000_000, 10_000_000);
+  assert.equal(budget.exceeded(), false);
+  assert.equal(budget.snapshot().percentUsed, 0);
+});
+
 // ── providers ────────────────────────────────────────────────────────────────
 
 const fakeFetch = (assertFn, payload) => async (url, init) => {

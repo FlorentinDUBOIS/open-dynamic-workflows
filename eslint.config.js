@@ -60,6 +60,6 @@ export default [
     },
   },
   {
-    ignores: ['**/node_modules/**', 'coverage/**', 'Tests/**', '**/*.min.js'],
+    ignores: ['**/node_modules/**', '**/dist/**', 'coverage/**', 'Tests/**', '**/*.min.js'],
   },
 ];

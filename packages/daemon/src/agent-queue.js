@@ -53,10 +53,13 @@ const DEFAULT_CONTEXT = { enabled: true, safetyFactor: 0.9, reservedOutputTokens
  *          logger?: object}} options
  */
 export function createAgentQueue(options) {
-  const queue = new PQueue({ concurrency: Math.max(1, options.maxConcurrency), autoStart: true });
+  const queue = new PQueue({
+    concurrency: options.maxConcurrency === undefined ? Number.POSITIVE_INFINITY : Math.max(1, options.maxConcurrency),
+    autoStart: true,
+  });
   const maxAttempts = options.retry?.maxAttempts ?? 3;
   const backoff = options.retry?.backoff ?? 'exponential';
-  const perAgentTimeoutMs = (options.perAgentTimeout ?? 120) * 1000;
+  const perAgentTimeoutMs = options.perAgentTimeout === null ? null : (options.perAgentTimeout ?? 120) * 1000;
   const log = options.logger ?? { debug() {}, info() {}, warn() {}, error() {} };
   let highWaterPending = 0;
 
@@ -168,7 +171,7 @@ export function createAgentQueue(options) {
     const controller = new AbortController();
     const onAbort = () => controller.abort();
     signal?.addEventListener('abort', onAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(), perAgentTimeoutMs);
+    const timer = perAgentTimeoutMs === null ? null : setTimeout(() => controller.abort(), perAgentTimeoutMs);
 
     // Schema handling that works across ALL providers (including free models with
     // no native structured-output support): normalize the schema and embed it in
@@ -282,7 +285,7 @@ export function createAgentQueue(options) {
       const controller = new AbortController();
       const onAbort = () => controller.abort();
       signal?.addEventListener('abort', onAbort, { once: true });
-      const timer = setTimeout(() => controller.abort(), perAgentTimeoutMs);
+        const timer = perAgentTimeoutMs === null ? null : setTimeout(() => controller.abort(), perAgentTimeoutMs);
       try {
         const response = await provider.callWithTools(
           {

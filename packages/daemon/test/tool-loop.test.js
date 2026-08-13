@@ -392,3 +392,24 @@ test('runtime bridge: tool jobs bypass the resume cache; plain jobs still dedupe
   // node rows are still recorded for audit/stats even though the cache was bypassed
   assert.ok(store.completedNodes(workflowId).length >= 2);
 });
+
+test('embedded runtime: interrupted tool nodes block resume until explicit reconciliation', async () => {
+  let started;
+  const startedPromise = new Promise((resolve) => { started = resolve; });
+  const { runtime, store } = makeRuntime(async (_job, signal) => {
+    started();
+    await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { code: 'aborted' })), { once: true }));
+  });
+  const script = 'async function execute(){ return agent({ prompt: "mutate", tools: ["write_file"] }); } module.exports = { execute };';
+  const workflowPlan = plan(script);
+  workflowPlan.strategy = mergeStrategy({ mode: 'embedded-unbounded', budget: { model: 'base-model' } });
+  const workflowId = await runtime.execWorkflow(workflowPlan, undefined, { wait: false });
+  await startedPromise;
+  await runtime.control(workflowId, 'pause');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const node = store.nodesByWorkflow(workflowId)[0];
+  assert.equal(node.status, 'reconciliation-required');
+  await assert.rejects(() => runtime.control(workflowId, 'resume'), /requires reconciliation/);
+  runtime.reconcileNode(workflowId, node.node_id, { verdict: 'skip', evidence: 'effect observed', output: { changed: true } });
+  assert.equal(store.getNode(node.node_id).reconciliation_verdict, 'skip');
+});

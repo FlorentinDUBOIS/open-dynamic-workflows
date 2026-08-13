@@ -36,10 +36,8 @@
  * is race-free.
  */
 
-const DEFAULT_TEXT_AGENT = 'title';
-
 export function createOpencodeBackend(client, opts = {}) {
-  const created = []; // single-use child sessions, bulk-deleted at dispose()
+  const created = [];
 
   function readId(res) {
     return res?.id ?? res?.data?.id ?? null;
@@ -49,7 +47,33 @@ export function createOpencodeBackend(client, opts = {}) {
     let id = null;
     if (typeof client?.session?.create === 'function') {
       try {
-        id = readId(await client.session.create({ body: { title: `odw-agent-${created.length}` } }));
+        let parent;
+        if (opts.parentSessionID && typeof client.session.get === 'function') {
+          try {
+            const response = await client.session.get({ path: { id: opts.parentSessionID } });
+            parent = response?.data ?? response;
+          } catch { /* a missing parent ruleset means the configured agent policy applies */ }
+        }
+        const routed = opts.modelForRole?.(job.role) ?? {};
+        const model = resolveModel(job.model ?? routed.model ?? opts.model);
+        const readOnly = job.role === 'reconstruction';
+        const body = {
+          title: `odw-${job.workflowId ?? 'workflow'}-${job.nodeId ?? created.length}`,
+          parentID: opts.parentSessionID,
+          agent: readOnly ? (opts.readOnlyAgent ?? 'plan') : opts.agent,
+          model: model ? { id: model.modelID, providerID: model.providerID, variant: job.variant ?? routed.variant } : undefined,
+          metadata: {
+            odw: true,
+            odwParentSessionID: opts.parentSessionID,
+            odwWorkflowID: job.workflowId,
+            odwNodeID: job.nodeId,
+            odwRole: job.role,
+            odwProfile: opts.profile,
+            odwStartedAt: Date.now(),
+          },
+          permission: readOnly ? readOnlyPermissions() : parent?.permission,
+        };
+        id = readId(await client.session.create({ body }));
       } catch { /* fall through to the caller-provided session below */ }
       if (id) {
         created.push(id);
@@ -68,14 +92,14 @@ export function createOpencodeBackend(client, opts = {}) {
     const body = {
       parts: [{ type: 'text', text: String(job.prompt ?? '') }],
     };
-    const agent = opts.agent ?? process.env.ODW_OPENCODE_AGENT ?? DEFAULT_TEXT_AGENT;
+    const agent = job.role === 'reconstruction' ? (opts.readOnlyAgent ?? 'plan') : opts.agent;
     if (agent) body.agent = String(agent);
     if (job.systemPrompt) body.system = String(job.systemPrompt);
-    // model OMITTED → inherit the user's configured OpenCode model/auth (keyless).
-    // Only force a specific model when explicitly requested as "providerID/modelID".
-    if (typeof opts.model === 'string' && opts.model.includes('/')) {
-      const [providerID, modelID] = opts.model.split('/');
-      body.model = { providerID, modelID };
+    const routed = opts.modelForRole?.(job.role) ?? {};
+    const model = resolveModel(job.model ?? routed.model ?? opts.model);
+    if (model) {
+      body.model = model;
+      if (job.variant ?? routed.variant) body.variant = String(job.variant ?? routed.variant);
     }
 
     const init = signal ? { signal } : undefined;
@@ -95,11 +119,6 @@ export function createOpencodeBackend(client, opts = {}) {
     // Native OpenCode tool-call turns also resolve with no ODW text-protocol
     // JSON. Treat them as retryable host-protocol failures so they do not stall
     // the embedded queue as empty schema-correction replies.
-    if (!text && hasNativeToolTurn(parts, payload)) {
-      const err = new Error('opencode backend: native tool call returned without text-protocol JSON; retry with a plain text agent or set ODW_OPENCODE_AGENT');
-      err.code = 'service_unavailable';
-      throw err;
-    }
     if (!text && payload.info?.error) {
       const err = new Error(`opencode backend: empty reply — host error: ${JSON.stringify(payload.info.error).slice(0, 200)}`);
       err.code = 'service_unavailable';
@@ -109,19 +128,24 @@ export function createOpencodeBackend(client, opts = {}) {
   }
 
   async function dispose() {
-    if (typeof client?.session?.delete === 'function') {
-      for (const id of created.splice(0)) {
-        try { await client.session.delete({ path: { id } }); } catch { /* ignore */ }
-      }
-    } else {
-      created.length = 0;
-    }
+    created.length = 0;
   }
 
-  return { invoke, dispose };
+  return { invoke, dispose, createdSessions: () => [...created] };
 }
 
-function hasNativeToolTurn(parts, payload) {
-  if (parts.some((part) => part?.type === 'tool' || part?.type === 'tool_use' || part?.tool)) return true;
-  return payload?.finish === 'tool-calls' || payload?.info?.finish === 'tool-calls';
+function readOnlyPermissions() {
+  return [
+    { permission: 'edit', pattern: '*', action: 'deny' },
+    { permission: 'bash', pattern: '*', action: 'deny' },
+    { permission: 'task', pattern: '*', action: 'deny' },
+    { permission: 'slack_*', pattern: '*', action: 'deny' },
+  ];
+}
+
+function resolveModel(value) {
+  if (typeof value !== 'string' || !value.includes('/')) return undefined;
+  const [providerID, ...rest] = value.split('/');
+  const modelID = rest.join('/');
+  return providerID && modelID ? { providerID, modelID } : undefined;
 }

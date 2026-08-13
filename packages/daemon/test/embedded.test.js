@@ -90,6 +90,27 @@ test('embedded: runs a real orchestration script through the sandbox on the host
   assert.equal(seen.length, 3, 'all three agent() calls dispatched through the host model');
 });
 
+test('embedded: start exposes the workflow id before completion', async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const orch = createEmbeddedOrchestrator({
+    invoke: async () => { await gate; return { text: '{"result":"ok"}' }; },
+    maxConcurrency: 1,
+  });
+  const started = await orch.start({
+    prompt: 'wait',
+    topology: 'pipeline',
+    roles: [],
+    estimate: { totalAgents: 1 },
+    strategy: mergeStrategy({ budget: { model: 'host:default' } }),
+    script: 'module.exports={execute:async()=>agent({role:"analysis",prompt:"wait",schema:{result:"string"}})}',
+  });
+  assert.match(started.workflowId, /^wf_/);
+  assert.equal(orch.store.getWorkflow(started.workflowId).status, 'running');
+  release();
+  assert.equal((await started.completion).status, 'completed');
+});
+
 test('embedded: host-model text protocol executes workflow tools', async () => {
   const root = mkdtempSync(join(tmpdir(), 'odw-embedded-tools-'));
   try {

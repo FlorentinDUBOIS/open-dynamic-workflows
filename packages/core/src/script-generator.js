@@ -88,7 +88,7 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
       role?.allowedTools?.length ? `tools: ${JSON.stringify(role.allowedTools)}` : null,
       role?.model ? `model: ${JSON.stringify(role.model)}` : null,
       `maxTokens: ${role?.maxTokens ?? 4000}`,
-      `timeout: ${strategy.timeouts.perAgent}`,
+      strategy.timeouts.perAgent === null ? null : `timeout: ${strategy.timeouts.perAgent}`,
     ].filter(Boolean);
     return `agent({ ${opts.join(', ')} })`;
   };
@@ -128,7 +128,9 @@ function emitTask(task, roleById, strategy, serialReserveAfter = 0, agentCapEnab
       ? '{ __odw_failed: true, label: item && item.label, item, error: String((e && e.message) || e) }'
       : '{ __odw_failed: true, error: String((e && e.message) || e) }'
     }))),`);
-    lines.push(`      { maxConcurrency: ${strategy.concurrency.max} }`);
+    lines.push(strategy.mode === 'embedded-unbounded'
+      ? `      {}`
+      : `      { maxConcurrency: ${strategy.concurrency.max} }`);
     lines.push(`    );`);
     if (preserveFanoutFailures) {
       lines.push(`    const ${v}_failed = ${v}_raw.filter((r) => r && r.__odw_failed).length;`);

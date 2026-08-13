@@ -84,7 +84,9 @@ export function estimateMessageTokens(job) {
  */
 export function estimate(taskGraph, strategy) {
   const totalAgents = Math.max(1, taskGraph?.root?.estimatedTotalAgents ?? taskGraph?.tasks?.length ?? 1);
-  const maxConcurrent = Math.min(strategy.concurrency.max, totalAgents);
+  const maxConcurrent = strategy.concurrency.max === null
+    ? totalAgents
+    : Math.min(strategy.concurrency.max, totalAgents);
 
   const perAgentTokens = average(
     (taskGraph?.tasks ?? []).map((t) => t.estimatedTokens || 6000)

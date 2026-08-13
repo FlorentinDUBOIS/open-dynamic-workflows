@@ -12,6 +12,8 @@
     "test:external": "node scripts/run-node-tests.mjs Tests/odw-endurance.test.mjs Tests/odw-real-projects/*.test.mjs",
     "coverage": "node scripts/run-workspace-script.mjs coverage",
     "lint": "eslint .",
+    "build:remote": "node scripts/build-remote-bundles.mjs",
+    "check:remote-bundles": "node scripts/build-remote-bundles.mjs --check",
     "audit:high": "npm audit --audit-level=high",
     "odw": "node packages/daemon/src/cli.js",
     "start": "node packages/daemon/src/cli.js start",

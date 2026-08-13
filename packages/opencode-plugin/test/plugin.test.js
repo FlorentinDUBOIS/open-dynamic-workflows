@@ -181,7 +181,7 @@ test('plugin: odw_run tool prefers embedded OpenCode model and honors maxAgents'
   assert.match(out, /EMBEDDED on your OpenCode model/);
   assert.match(out, /~6 agents/);
   assert.equal(client.prompts.length, 6, '1 discovery + 1 capped work item + 3 critics + 1 synthesis');
-  assert.equal(client.deleted.length, 6, 'embedded child sessions are cleaned up');
+  assert.equal(client.deleted.length, 0, 'embedded child sessions remain attached to the parent');
 });
 
 test('plugin: embedded OpenCode runs default to a twenty-agent safety cap', async () => {
@@ -206,7 +206,7 @@ test('plugin: explicit twenty-worker prompt lifts only the implicit embedded cap
   assert.match(out, /~21 agents/);
   const workerPrompts = client.prompts.filter((prompt) => /Run ONE requested agent/.test(prompt));
   assert.equal(workerPrompts.length, 20);
-  assert.equal(client.deleted.length, 21, 'twenty workers plus synthesis are cleaned up');
+  assert.equal(client.deleted.length, 0, 'twenty workers plus synthesis remain attached to the parent');
 });
 
 // ── bearer-token auth ────────────────────────────────────────────────────────

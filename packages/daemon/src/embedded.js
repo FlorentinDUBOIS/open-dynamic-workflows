@@ -11,7 +11,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { createPlan, mergeStrategy } from 'odw-core';
+import { createPlan, inferComplexity, mergeStrategy, STRATEGY_MODES } from 'odw-core';
 import { createMemoryStore } from './memory-store.js';
 import { createAgentQueue } from './agent-queue.js';
 import { createRuntime } from './runtime.js';
@@ -35,7 +35,8 @@ export function createEmbeddedOrchestrator(options = {}) {
   const store = options.store ?? createMemoryStore();
   const events = options.events ?? new EventEmitter();
   events.setMaxListeners?.(100);
-  const maxConcurrency = Math.max(1, options.maxConcurrency ?? 8);
+  const embeddedUnbounded = options.embeddedUnbounded === true;
+  const maxConcurrency = embeddedUnbounded ? undefined : Math.max(1, options.maxConcurrency ?? 8);
   const defaultMaxAgents = positiveInt(options.maxAgents);
   const model = options.model ?? HOST_MODEL;
 
@@ -45,6 +46,7 @@ export function createEmbeddedOrchestrator(options = {}) {
       throw new Error('createEmbeddedOrchestrator requires either invoke() or resolveProvider');
     }
     const provider = createHostProvider({ invoke: options.invoke });
+    if (options.nativeHostTools === true) delete provider.callWithTools;
     resolveProvider = (m) => ({ provider, model: m || model });
   }
 
@@ -54,32 +56,51 @@ export function createEmbeddedOrchestrator(options = {}) {
     // opt in to write_file/run_bash for build-style workflows.
     safety: options.safety ?? { requireApprovalFor: ['write_file', 'run_bash', 'git_commit'], autoApproveReadOnly: true, dryRun: false, blockedCommands: [] },
     git: options.git ?? { createBranch: false, branchPrefix: 'odw/', commitCheckpoints: false },
-    daemon: { maxConcurrency },
+    daemon: { maxConcurrency: maxConcurrency ?? Number.POSITIVE_INFINITY },
   };
 
   const queue = createAgentQueue({
     maxConcurrency,
     retry: { maxAttempts: options.maxAttempts ?? 3, backoff: 'exponential' },
-    perAgentTimeout: options.perAgentTimeout ?? 120,
+    perAgentTimeout: embeddedUnbounded ? null : options.perAgentTimeout ?? 120,
     resolveProvider,
     logger,
   });
 
-  /** Planning (run() AND the runtime's replan() bridge): heuristic createPlan
-   *  WITHOUT llmDecompose — embedded has no planning model, so heuristic
-   *  decomposition is the documented degradation. */
-  const planner = (prompt, plannerOptions = {}) =>
-    createPlan(prompt, {
+  const llmDecompose = async (prompt) => {
+    const routed = options.modelForRole?.('planner') ?? {};
+    const result = await queue.executeAgent({
+      model: routed.model ?? model,
+      variant: routed.variant,
+      role: 'planner',
+      systemPrompt:
+        'Decompose the task into a JSON task graph. Return only JSON with root and tasks. ' +
+        'Task types are discovery, analysis, mutation, verification, and synthesis.',
+      prompt,
+      schema: { type: 'object', properties: { root: { type: 'object' }, tasks: { type: 'array' } }, required: ['tasks'] },
+      maxTokens: 4000,
+      temperature: 0,
+    });
+    return result.output;
+  };
+
+  const planner = (prompt, plannerOptions = {}) => {
+    const complexity = plannerOptions.complexityHint ?? inferComplexity(prompt);
+    return createPlan(prompt, {
       ...plannerOptions,
       maxAgents: positiveInt(plannerOptions.maxAgents) ?? defaultMaxAgents,
+      complexityHint: complexity,
+      llmDecompose: options.hybridPlanning === true && complexity !== 'low' ? llmDecompose : undefined,
       strategy: mergeStrategy({
+        mode: embeddedUnbounded ? STRATEGY_MODES.EMBEDDED_UNBOUNDED : undefined,
         budget: { model },
-        concurrency: { max: maxConcurrency, default: maxConcurrency },
+        concurrency: maxConcurrency ? { max: maxConcurrency, default: maxConcurrency } : undefined,
         safety: config.safety,
         git: config.git,
         ...(plannerOptions.strategy ?? {}),
       }),
     });
+  };
 
   const runtime = createRuntime({ store, queue, config, events, logger, planner });
 
@@ -88,7 +109,7 @@ export function createEmbeddedOrchestrator(options = {}) {
    * @param {string|object} promptOrPlan a natural-language prompt or a prebuilt plan
    * @param {{cwd?: string, args?: object, strategy?: object, maxAgents?: number}} [runOptions]
    */
-  async function run(promptOrPlan, runOptions = {}) {
+  async function start(promptOrPlan, runOptions = {}) {
     const plan = typeof promptOrPlan === 'string'
       ? await planner(promptOrPlan, { strategy: runOptions.strategy, maxAgents: runOptions.maxAgents })
       : promptOrPlan;
@@ -97,16 +118,51 @@ export function createEmbeddedOrchestrator(options = {}) {
       cwd: runOptions.cwd ?? process.cwd(),
       args: runOptions.args ?? {},
       roles: plan.roles,
-      wait: true,
+      wait: false,
     });
+    const completion = waitForTerminal(workflowId).then(() => resultOf(workflowId, plan));
+    return { workflowId, plan, store, events, completion };
+  }
 
+  async function run(promptOrPlan, runOptions = {}) {
+    const started = await start(promptOrPlan, runOptions);
+    return started.completion;
+  }
+
+  function resultOf(workflowId, plan) {
     const row = store.getWorkflow(workflowId);
     let result = null;
     try { result = row?.result ? JSON.parse(row.result) : null; } catch { result = row?.result ?? null; }
     return { workflowId, status: row?.status ?? 'unknown', result, plan, store, events };
   }
 
-  return { run, runtime, queue, store, events, execWorkflow: runtime.execWorkflow, control: runtime.control };
+  function waitForTerminal(workflowId) {
+    const terminal = new Set(['completed', 'failed', 'cancelled', 'paused']);
+    if (terminal.has(store.getWorkflow(workflowId)?.status)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const eventName = 'workflow-event';
+      const listener = (event) => {
+        if (event?.workflowId !== workflowId) return;
+        if (!terminal.has(store.getWorkflow(workflowId)?.status)) return;
+        events.off(eventName, listener);
+        resolve();
+      };
+      events.on(eventName, listener);
+    });
+  }
+
+  return {
+    start,
+    run,
+    runtime,
+    queue,
+    store,
+    events,
+    execWorkflow: runtime.execWorkflow,
+    control: runtime.control,
+    reconcileNode: runtime.reconcileNode,
+    planner,
+  };
 }
 
 function positiveInt(value) {

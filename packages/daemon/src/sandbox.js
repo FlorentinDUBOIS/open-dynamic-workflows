@@ -8,11 +8,12 @@
  * CPU guard: per-slice wall-clock interrupt. Memory: setMemoryLimit.
  */
 
-import { createRequire } from 'node:module';
 import { GUEST_PRELUDE } from './guest-prelude.js';
+import { newQuickJSWASMModuleFromVariant } from 'quickjs-emscripten-core';
+import releaseSyncVariant from '@jitl/quickjs-singlefile-cjs-release-sync';
 
-const require = createRequire(import.meta.url);
-const { getQuickJS } = require('quickjs-emscripten');
+let quickJS;
+const getQuickJS = () => quickJS ??= newQuickJSWASMModuleFromVariant(releaseSyncVariant);
 
 const OK = (value) => JSON.stringify({ ok: true, value: value === undefined ? null : value });
 const FAIL = (error) =>
@@ -173,7 +174,7 @@ export async function createSandbox(options) {
         );
         const promiseHandle = unwrapOrThrow(vm, runResult);
 
-        const totalTimeoutMs = options.totalTimeoutMs ?? 3600_000;
+        const totalTimeoutMs = options.totalTimeoutMs === undefined ? 3600_000 : options.totalTimeoutMs;
         const resolved = await withTimeout(vm.resolvePromise(promiseHandle), totalTimeoutMs, pump, () => fatal);
         promiseHandle.dispose();
         if (fatal) throw fatal;
@@ -222,7 +223,7 @@ function unwrapOrThrow(vm, result) {
 
 function withTimeout(promise, ms, pump, getFatal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`workflow exceeded total timeout (${ms / 1000}s)`)), ms);
+    const timer = ms === null ? null : setTimeout(() => reject(new Error(`workflow exceeded total timeout (${ms / 1000}s)`)), ms);
     // keep the VM job queue moving while we wait; bail out fast on a fatal VM error
     const tick = setInterval(() => {
       pump();

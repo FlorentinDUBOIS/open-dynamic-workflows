@@ -13,7 +13,7 @@ const MAX_EXPLICIT_FANOUT = 100;
  * @param {string} prompt
  * @returns {import('./types.js').Complexity}
  */
-function inferComplexity(prompt) {
+export function inferComplexity(prompt) {
   const text = prompt.toLowerCase();
   if (/\b(entire|all|every|whole|codebase|monorepo|migrate|audit)\b/.test(text) && text.length > 120) return 'massive';
   if (/\b(all|every|each|audit|migrate|refactor|security)\b/.test(text)) return 'high';

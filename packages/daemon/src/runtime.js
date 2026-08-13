@@ -159,6 +159,12 @@ export function createRuntime(deps) {
         // tools is a different node.
         const toolKey = toolJob ? `|tools:${[...tools].sort().join(',')}` : '';
         const nodeId = sha1(`${workflowId}|${phase}|${job.role ?? ''}|${job.prompt}${toolKey}`);
+        const existingNode = store.getNode(nodeId);
+
+        if (toolJob && existingNode?.status === 'completed' && existingNode.reconciliation_verdict === 'skip') {
+          emit(workflowId, 'agent_reconciled_skip', { nodeId, phase });
+          return JSON.parse(existingNode.output);
+        }
 
         // RESUME-CACHE SAFETY: never serve a cached output for a tool-using
         // agent — a resumed run replaying "I wrote the file" from cache would
@@ -176,6 +182,7 @@ export function createRuntime(deps) {
           role_id: job.role ?? 'agent',
           status: 'running',
           prompt: String(job.prompt).slice(0, 100_000),
+          output_schema: job.schema ? JSON.stringify(job.schema) : null,
           max_retries: strategy.retry.maxAttempts,
         });
         emit(workflowId, 'agent_start', { nodeId, phase, role: job.role, model });
@@ -226,15 +233,23 @@ export function createRuntime(deps) {
           emit(workflowId, 'agent_complete', { nodeId, phase, durationMs: result.durationMs });
           return result.output;
         } catch (error) {
+          const reconciliationRequired =
+            strategy.mode === 'embedded-unbounded' && toolJob && (state.paused || abort.signal.aborted);
           store.failNode({
             node_id: nodeId,
-            status: error.code === 'aborted' ? 'cancelled' : 'failed',
+            status: reconciliationRequired ? 'reconciliation-required' : error.code === 'aborted' ? 'cancelled' : 'failed',
             error: String(error.message).slice(0, 2000),
           });
           store.bumpWorkflowTotals({
             workflow_id: workflowId, completed: 0, failed: 1, tokens_input: 0, tokens_output: 0, cost_usd: 0,
           });
-          emit(workflowId, 'agent_failed', { nodeId, phase, error: String(error.message).slice(0, 500) });
+          emit(workflowId, reconciliationRequired ? 'reconciliation_required' : 'agent_failed', {
+            nodeId,
+            phase,
+            role: job.role,
+            schema: job.schema,
+            error: String(error.message).slice(0, 500),
+          });
           throw error;
         }
       },
@@ -341,7 +356,7 @@ export function createRuntime(deps) {
           // and args (the sub-script gets opts.args when provided).
           hostBridges: { ...hostBridges, replan: replanBridge(depth + 1), args: () => opts.args ?? options.args ?? {} },
           strategy: subStrategy,
-          totalTimeoutMs: subStrategy.timeouts.total * 1000,
+          totalTimeoutMs: subStrategy.timeouts.total === null ? null : subStrategy.timeouts.total * 1000,
         });
         return await subSandbox.runScript(script);
       } finally {
@@ -358,7 +373,7 @@ export function createRuntime(deps) {
         sandbox = await createSandbox({
           hostBridges,
           strategy,
-          totalTimeoutMs: strategy.timeouts.total * 1000,
+          totalTimeoutMs: strategy.timeouts.total === null ? null : strategy.timeouts.total * 1000,
         });
         const result = await sandbox.runScript(script);
         store.setWorkflowResult(workflowId, 'completed', result);
@@ -399,6 +414,7 @@ export function createRuntime(deps) {
     if (action === 'pause') {
       if (state) {
         state.paused = true;
+        state.abort.abort();
       }
       store.setWorkflowStatus(workflowId, 'paused');
       emit(workflowId, 'workflow_paused', { reason: 'user' });
@@ -432,6 +448,13 @@ export function createRuntime(deps) {
     const row = store.getWorkflow(workflowId);
     if (!row || row.status === 'completed') return false;
     if (active.has(workflowId)) return true;
+    const unresolved = store.nodesByWorkflow(workflowId).filter((node) => node.status === 'reconciliation-required');
+    if (unresolved.length) {
+      const error = new Error(`workflow ${workflowId} requires reconciliation for node ${unresolved[0].node_id}`);
+      error.code = 'reconciliation_required';
+      error.node = unresolved[0];
+      throw error;
+    }
 
     const requeued = store.requeueOrphans(workflowId);
     store.setWorkflowStatus(workflowId, 'running');
@@ -440,6 +463,34 @@ export function createRuntime(deps) {
     const strategy = mergeStrategy(JSON.parse(row.execution_strategy));
     runWorkflow(workflowId, row.compiled_script, strategy, {}).catch(() => {});
     return true;
+  }
+
+  function reconcileNode(workflowId, nodeId, input) {
+    const row = store.getWorkflow(workflowId);
+    if (!row) throw Object.assign(new Error(`workflow not found: ${workflowId}`), { status: 404 });
+    const node = store.getNode(nodeId);
+    if (!node || node.workflow_id !== workflowId || node.status !== 'reconciliation-required') {
+      throw new Error(`node ${nodeId} does not require reconciliation`);
+    }
+    const verdict = String(input?.verdict ?? '');
+    const evidence = String(input?.evidence ?? '').trim();
+    if (!['replay', 'skip'].includes(verdict)) throw new Error('reconciliation verdict must be replay or skip');
+    if (!evidence) throw new Error('reconciliation evidence is required');
+    if (verdict === 'skip') {
+      store.upsertNode({ ...node, reconciliation_verdict: 'skip', reconciliation_evidence: evidence });
+      store.completeNode({
+        node_id: nodeId,
+        output: JSON.stringify(input.output ?? null),
+        tokens_input: 0,
+        tokens_output: 0,
+        cost_usd: 0,
+        duration_ms: 0,
+      });
+    } else {
+      store.upsertNode({ ...node, status: 'queued', error: null, reconciliation_verdict: 'replay', reconciliation_evidence: evidence });
+    }
+    emit(workflowId, 'reconciliation_recorded', { nodeId, verdict, evidence });
+    return { workflowId, nodeId, verdict, evidence };
   }
 
   /** Resume everything that was running/paused at last shutdown. */
@@ -467,7 +518,7 @@ export function createRuntime(deps) {
     };
   }
 
-  return { execWorkflow, control, resumeWorkflow, resumeInterrupted, resultOf, stats };
+  return { execWorkflow, control, reconcileNode, resumeWorkflow, resumeInterrupted, resultOf, stats };
 }
 
 function sha1(text) {
