@@ -14,7 +14,7 @@ const bundles = [
   {
     entry: 'packages/opencode-plugin/src/remote.js',
     file: 'server.js',
-    external: ['@opencode-ai/plugin'],
+    external: [],
   },
   {
     entry: 'packages/opencode-plugin/src/tui.ts',
@@ -47,7 +47,9 @@ try {
 
 function canonicalize(path) {
   const source = readFileSync(path, 'utf8');
-  const canonical = source.replaceAll(root, '/open-dynamic-workflows');
+  const canonical = source
+    .replaceAll(root, '/open-dynamic-workflows')
+    .replace(/[\t ]+$/gm, '');
   writeFileSync(path, canonical);
 }
 
