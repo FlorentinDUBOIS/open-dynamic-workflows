@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -8,15 +8,7 @@ import { pathToFileURL } from 'node:url';
 test('tracked server bundle executes without ODW packages or adjacent WASM', async () => {
   const root = mkdtempSync(join(tmpdir(), 'odw-standalone-'));
   try {
-    const moduleRoot = join(root, 'node_modules', '@opencode-ai', 'plugin');
-    mkdirSync(moduleRoot, { recursive: true });
     writeFileSync(join(root, 'package.json'), '{"type":"module"}');
-    writeFileSync(join(moduleRoot, 'package.json'), '{"name":"@opencode-ai/plugin","type":"module","exports":"./index.js"}');
-    writeFileSync(join(moduleRoot, 'index.js'), [
-      'export function tool(definition){return definition}',
-      'tool.schema={string:()=>chain(),boolean:()=>chain(),enum:()=>chain()}',
-      'function chain(){return {optional(){return this}}}',
-    ].join(';'));
     const bundle = join(root, 'server.js');
     cpSync(new URL('../dist/server.js', import.meta.url), bundle);
     const { default: plugin } = await import(`${pathToFileURL(bundle).href}?test=${Date.now()}`);
