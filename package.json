@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "build:remote": "node scripts/build-remote-bundles.mjs",
     "check:remote-bundles": "node scripts/build-remote-bundles.mjs --check",
+    "test:opencode-tui": "bun test packages/opencode-plugin/test/tui-runtime.test.ts",
     "audit:high": "npm audit --audit-level=high",
     "odw": "node packages/daemon/src/cli.js",
     "start": "node packages/daemon/src/cli.js start",

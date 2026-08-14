@@ -16,12 +16,15 @@ const bundles = [
     file: 'server.js',
     external: [],
     exports: ['default'],
+    minify: ['--minify'],
   },
   {
     entry: 'packages/opencode-plugin/src/tui.ts',
     file: 'tui.js',
     external: ['@opencode-ai/plugin/tui', '@opentui/solid', 'solid-js'],
     exports: ['default'],
+    minify: ['--minify-syntax', '--minify-identifiers'],
+    runtimeBridge: true,
   },
 ];
 
@@ -30,7 +33,7 @@ try {
     const path = join(target, bundle.file);
     execFileSync('bun', [
       'build', bundle.entry,
-      '--target=node', '--format=esm', '--minify',
+      '--target=node', '--format=esm', ...bundle.minify,
       ...bundle.external.flatMap((name) => ['--external', name]),
       '--outfile', path,
     ], { cwd: root, stdio: 'inherit' });
@@ -60,11 +63,15 @@ function inspect(path, bundle) {
   for (const forbidden of ['better-sqlite3', 'ODW_DAEMON_TOKEN', 'ODW_DAEMON_PORT', '127.0.0.1:7345', root]) {
     if (source.includes(forbidden)) throw new Error(`${path} contains forbidden runtime dependency ${forbidden}`);
   }
-  const imports = [...source.matchAll(/from["']([^"']+)["']/g)].map((match) => match[1]);
+  const imports = [...source.matchAll(/(?:^|[;\n])import[^;\n]*?\bfrom\s*["']([^"']+)["']/g)]
+    .map((match) => match[1]);
   for (const specifier of imports) {
     if (!specifier.startsWith('node:') && !bundle.external.includes(specifier)) {
       throw new Error(`${path} imports unexpected runtime package ${specifier}`);
     }
+  }
+  if (bundle.runtimeBridge && /\bfrom["']/.test(source)) {
+    throw new Error(`${path} contains a static import that the OpenTUI runtime bridge cannot rewrite`);
   }
   const actual = readExports(source);
   const expected = [...bundle.exports].sort();

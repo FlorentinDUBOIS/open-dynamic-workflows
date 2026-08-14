@@ -16,7 +16,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
     const id = sessionID ?? parentID();
     if (!id) return;
     setParentID(id);
-    const response = await api.client.session.children({ path: { id } });
+    const response = await api.client.session.children({ sessionID: id });
     setChildren((response.data ?? response) as unknown[]);
   };
 
@@ -31,7 +31,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
     const parent = parentID();
     if (!parent) return;
     const command = controlCommand(workflowID, action);
-    await api.client.session.command({ path: { id: parent }, body: command });
+    await api.client.session.command({ sessionID: parent, ...command });
     await refresh(parent);
   };
 
