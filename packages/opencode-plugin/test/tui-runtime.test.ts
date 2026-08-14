@@ -3,6 +3,8 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { registerTimedLeader } from "@opentui/keymap/addons/opentui";
+import { createTestKeymap } from "@opentui/keymap/testing";
 import { testRender } from "@opentui/solid";
 import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure";
 
@@ -23,6 +25,7 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
     const childrenRequests: unknown[] = [];
     const commandRequests: unknown[] = [];
     const layers: any[] = [];
+    const navigationRequests: unknown[] = [];
     const routes: any[] = [];
     const slots: any[] = [];
     const disposals: Array<() => void> = [];
@@ -61,7 +64,7 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
           return () => {};
         },
         current: { name: "session", params: { sessionID: "parent" } },
-        navigate() {},
+        navigate: (name: string, params: unknown) => navigationRequests.push({ name, params }),
       },
       mode: { push: () => () => {} },
       keymap: {
@@ -108,15 +111,60 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
       sidebar.renderer.destroy();
     }
 
-    const base = layers.find((layer) => layer.mode === "base");
-    expect(base.commands).toContainEqual(expect.objectContaining({
+    const palette = layers.find((layer) => layer.commands?.some(
+      (command: any) => command.name === "odw.dashboard.open",
+    ));
+    expect(palette.mode).toBeUndefined();
+    expect(palette.commands).toContainEqual(expect.objectContaining({
       name: "odw.dashboard.open",
       title: "Open ODW Dashboard",
     }));
+
+    const base = layers.find((layer) => layer.mode === "base");
     expect(base.bindings).toContainEqual(expect.objectContaining({
       key: "<leader>w",
       cmd: "odw.dashboard.open",
     }));
+
+    const harness = createTestKeymap({ defaultKeys: true });
+    const unregisterMode = harness.keymap.registerLayerFields({
+      mode(value, ctx) {
+        ctx.require("opencode.mode", value);
+      },
+    });
+    const unregisterLeader = registerTimedLeader(harness.keymap, {
+      trigger: "ctrl+x",
+      name: "leader",
+    });
+    const unregisterLayers = layers.map((layer) => harness.keymap.registerLayer(layer));
+    try {
+      harness.keymap.setData("opencode.mode", "modal");
+      const commands = harness.keymap.getCommandEntries({
+        namespace: "palette",
+        visibility: "reachable",
+      });
+      expect(commands.map((entry) => entry.command.name)).toContain("odw.dashboard.open");
+      expect(harness.keymap.getCommandBindings({
+        commands: ["odw.dashboard.open"],
+        visibility: "reachable",
+      }).get("odw.dashboard.open") ?? []).toHaveLength(0);
+      expect(harness.keymap.dispatchCommand("odw.dashboard.open").ok).toBe(true);
+      expect(navigationRequests.at(-1)).toEqual({
+        name: "odw-dashboard",
+        params: { sessionID: "parent" },
+      });
+
+      harness.keymap.setData("opencode.mode", "base");
+      expect(harness.keymap.getCommandBindings({
+        commands: ["odw.dashboard.open"],
+        visibility: "reachable",
+      }).get("odw.dashboard.open") ?? []).toHaveLength(1);
+    } finally {
+      for (const unregister of unregisterLayers.reverse()) unregister();
+      unregisterLeader();
+      unregisterMode();
+      harness.cleanup();
+    }
 
     const route = routes.find((item) => item.name === "odw-dashboard");
     const dashboard = await testRender(

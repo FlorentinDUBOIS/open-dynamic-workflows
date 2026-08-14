@@ -1,6 +1,6 @@
 // packages/opencode-plugin/src/tui.ts
-import { createElement as b, insert as k, setProp as h } from "@opentui/solid";
-import { createSignal as y, onCleanup as S } from "solid-js";
+import { createElement as k, insert as v, setProp as h } from "@opentui/solid";
+import { createSignal as b, onCleanup as _ } from "solid-js";
 
 // packages/opencode-plugin/src/tui-state.js
 function P(e, t, s, r) {
@@ -26,13 +26,13 @@ function P(e, t, s, r) {
         startedAt: E(n.odwStartedAt) ?? o.time?.created,
         updatedAt: o.time?.updated ?? o.time?.created
       }, u.set(a, i);
-    let g = s(o.id)?.type ?? "idle", f = [...r(o.id) ?? []].reverse().find((v) => v.role === "assistant"), p = {
+    let g = s(o.id)?.type ?? "idle", f = [...r(o.id) ?? []].reverse().find((y) => y.role === "assistant"), p = {
       sessionID: o.id,
       nodeID: D(n.odwNodeID) ?? o.id,
       role: D(n.odwRole) ?? "agent",
       model: W(o, f),
       status: T(g, f),
-      durationMs: C(o, f),
+      durationMs: S(o, f),
       error: f?.error ? String(f.error?.message ?? f.error) : void 0
     };
     if (i.children.push(o.id), i.nodes.push(p), p.status === "running" || p.status === "retrying")
@@ -60,7 +60,7 @@ function W(e, t) {
     return `${s.providerID}/${s.modelID}`;
   return;
 }
-function C(e, t) {
+function S(e, t) {
   let s = e.time?.created ?? t?.time?.created, r = t?.time?.completed ?? e.time?.updated;
   return s && r ? Math.max(0, r - s) : void 0;
 }
@@ -79,8 +79,8 @@ function $(e, t) {
 }
 
 // packages/opencode-plugin/src/tui.ts
-var _ = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboard", L = async (e) => {
-  let [t, s] = y([]), [r, u] = y(), [o, n] = y(e.kv.get(M, !1)), a = async (d) => {
+var L = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboard", N = async (e) => {
+  let [t, s] = b([]), [r, u] = b(), [o, n] = b(e.kv.get(M, !1)), a = async (d) => {
     let l = d ?? r();
     if (!l)
       return;
@@ -102,12 +102,11 @@ var _ = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboar
       let l = typeof d?.sessionID === "string" ? d.sessionID : r();
       a(l);
       let c = e.mode.push(O);
-      S(c);
-      let w = b("box");
-      return h(w, "flexDirection", "column"), h(w, "padding", 1), k(w, () => R(e, i(), g)), w;
+      _(c);
+      let w = k("box");
+      return h(w, "flexDirection", "column"), h(w, "padding", 1), v(w, () => q(e, i(), g)), w;
     }
   }]), p = e.keymap.registerLayer({
-    mode: "base",
     commands: [{
       name: "odw.dashboard.open",
       title: "Open ODW Dashboard",
@@ -119,8 +118,11 @@ var _ = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboar
           e.route.navigate("odw-dashboard", { sessionID: l });
       }
     }],
+    bindings: []
+  }), y = e.keymap.registerLayer({
+    mode: "base",
     bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "ODW dashboard" }]
-  }), v = e.keymap.registerLayer({
+  }), A = e.keymap.registerLayer({
     mode: O,
     bindings: [
       { key: "escape", cmd: () => r() && e.route.navigate("session", { sessionID: r() }), desc: "Close dashboard" },
@@ -128,7 +130,7 @@ var _ = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboar
       { key: "r", cmd: () => i()[0] && void g(i()[0].id, "resume"), desc: "Resume newest workflow" },
       { key: "s", cmd: () => i()[0] && void g(i()[0].id, "stop"), desc: "Stop newest workflow" }
     ]
-  }), A = [
+  }), C = [
     e.event.on("session.created", () => void a()),
     e.event.on("session.updated", () => void a()),
     e.event.on("session.status", () => void a()),
@@ -139,17 +141,17 @@ var _ = "open-dynamic-workflows", M = "odw.sidebar.collapsed", O = "odw.dashboar
     slots: {
       sidebar_content(d, l) {
         a(l.session_id);
-        let c = b("box");
-        return h(c, "flexDirection", "column"), h(c, "paddingTop", 1), k(c, () => N(e, i(), o(), I)), c;
+        let c = k("box");
+        return h(c, "flexDirection", "column"), h(c, "paddingTop", 1), v(c, () => R(e, i(), o(), I)), c;
       }
     }
   }), e.lifecycle.onDispose(() => {
-    f(), p(), v();
-    for (let d of A)
+    f(), p(), y(), A();
+    for (let d of C)
       d();
   });
 };
-function N(e, t, s, r) {
+function R(e, t, s, r) {
   let u = t.filter((n) => n.status === "running").length, o = [m(`${s ? "▶" : "▼"} ODW (${u} active, ${t.length} total)`, {
     fg: e.theme.current.text,
     bold: !0,
@@ -166,7 +168,7 @@ function N(e, t, s, r) {
     o.push(m(`  • ${n.id.slice(0, 14)} ${n.status}`, { fg: x(e, n.status) })), o.push(m(`    ${n.profile} · ${n.nodes.length} nodes`, { fg: e.theme.current.textMuted }));
   return o;
 }
-function R(e, t, s) {
+function q(e, t, s) {
   let r = [m("Open Dynamic Workflows", { fg: e.theme.current.text, bold: !0 })];
   if (r.push(m("p pause · r resume · s stop · esc close", { fg: e.theme.current.textMuted })), !t.length)
     return [...r, m("No workflows for this session.", { fg: e.theme.current.textMuted })];
@@ -193,12 +195,12 @@ function x(e, t) {
   return e.theme.current.textMuted;
 }
 function m(e, t = {}) {
-  let s = b("text");
+  let s = k("text");
   for (let [r, u] of Object.entries(t))
     h(s, r, u);
-  return k(s, e), s;
+  return v(s, e), s;
 }
-var K = { id: _, tui: L }, Y = K;
+var K = { id: L, tui: N }, z = K;
 export {
-  Y as default
+  z as default
 };

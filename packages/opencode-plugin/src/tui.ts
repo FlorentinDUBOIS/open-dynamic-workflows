@@ -56,8 +56,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
     },
   }]);
 
-  const unregisterKeymap = api.keymap.registerLayer({
-    mode: "base",
+  const unregisterCommand = api.keymap.registerLayer({
     commands: [{
       name: "odw.dashboard.open",
       title: "Open ODW Dashboard",
@@ -69,6 +68,11 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
         if (sessionID) api.route.navigate("odw-dashboard", { sessionID });
       },
     }],
+    bindings: [],
+  });
+
+  const unregisterShortcut = api.keymap.registerLayer({
+    mode: "base",
     bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "ODW dashboard" }],
   });
 
@@ -105,7 +109,8 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
 
   api.lifecycle.onDispose(() => {
     unregisterRoute();
-    unregisterKeymap();
+    unregisterCommand();
+    unregisterShortcut();
     unregisterDashboardKeys();
     for (const unregister of unregisterEvents) unregister();
   });
