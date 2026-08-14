@@ -59,8 +59,8 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
   const unregisterCommand = api.keymap.registerLayer({
     commands: [{
       name: "odw.dashboard.open",
-      title: "Open ODW Dashboard",
-      category: "Open Dynamic Workflows",
+      title: "Open Workflows Dashboard",
+      category: "Workflows",
       namespace: "palette",
       run() {
         const current = api.route.current;
@@ -73,7 +73,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
 
   const unregisterShortcut = api.keymap.registerLayer({
     mode: "base",
-    bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "ODW dashboard" }],
+    bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "Workflows dashboard" }],
   });
 
   const unregisterDashboardKeys = api.keymap.registerLayer({
@@ -118,7 +118,7 @@ const tui: TuiPlugin = async (api: TuiPluginApi) => {
 
 function renderSidebar(api: TuiPluginApi, workflows: any[], collapsed: boolean, toggle: () => void): unknown[] {
   const active = workflows.filter((workflow) => workflow.status === "running").length;
-  const nodes: unknown[] = [text(`${collapsed ? "▶" : "▼"} ODW (${active} active, ${workflows.length} total)`, {
+  const nodes: unknown[] = [text(`${collapsed ? "▶" : "▼"} Workflows (${active} active, ${workflows.length} total)`, {
     fg: api.theme.current.text,
     bold: true,
     onMouseDown: (event: { button: number; stopPropagation(): void }) => {
@@ -135,7 +135,7 @@ function renderSidebar(api: TuiPluginApi, workflows: any[], collapsed: boolean, 
 }
 
 function renderDashboard(api: TuiPluginApi, workflows: any[], control: (id: string, action: "pause" | "resume" | "stop") => Promise<void>): unknown[] {
-  const nodes: unknown[] = [text("Open Dynamic Workflows", { fg: api.theme.current.text, bold: true })];
+  const nodes: unknown[] = [text("Workflows", { fg: api.theme.current.text, bold: true })];
   nodes.push(text("p pause · r resume · s stop · esc close", { fg: api.theme.current.textMuted }));
   if (!workflows.length) return [...nodes, text("No workflows for this session.", { fg: api.theme.current.textMuted })];
   for (const workflow of workflows) {

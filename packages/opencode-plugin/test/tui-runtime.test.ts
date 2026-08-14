@@ -106,7 +106,7 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
       await Bun.sleep(0);
       await sidebar.flush();
       expect(childrenRequests[0]).toEqual({ sessionID: "parent" });
-      expect(sidebar.captureCharFrame()).toContain("ODW (");
+      expect(sidebar.captureCharFrame()).toContain("Workflows (");
     } finally {
       sidebar.renderer.destroy();
     }
@@ -117,13 +117,15 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
     expect(palette.mode).toBeUndefined();
     expect(palette.commands).toContainEqual(expect.objectContaining({
       name: "odw.dashboard.open",
-      title: "Open ODW Dashboard",
+      title: "Open Workflows Dashboard",
+      category: "Workflows",
     }));
 
     const base = layers.find((layer) => layer.mode === "base");
     expect(base.bindings).toContainEqual(expect.objectContaining({
       key: "<leader>w",
       cmd: "odw.dashboard.open",
+      desc: "Workflows dashboard",
     }));
 
     const harness = createTestKeymap({ defaultKeys: true });
@@ -172,7 +174,7 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
       { width: 100, height: 30 },
     );
     try {
-      await dashboard.waitForFrame((frame) => frame.includes("Open Dynamic Workflows"));
+      await dashboard.waitForFrame((frame) => frame.includes("Workflows"));
     } finally {
       dashboard.renderer.destroy();
     }
