@@ -4,10 +4,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireSessionLock } from '../src/session-lock.js';
+import { hasFlock, NO_FLOCK } from './flock.js';
 
 test('same session contends while independent sessions overlap and release', async () => {
   const root = await mkdtemp(join(tmpdir(), 'odw-lock-'));
   try {
+    if (!hasFlock) {
+      await assert.rejects(() => acquireSessionLock('session-one', { root }), NO_FLOCK);
+      return;
+    }
     const first = await acquireSessionLock('session-one', { root });
     assert.ok(first);
     assert.equal(await acquireSessionLock('session-one', { root }), null);

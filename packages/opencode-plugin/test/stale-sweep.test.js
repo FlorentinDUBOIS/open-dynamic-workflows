@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createChildLedger, sweepStaleChildren } from '../src/stale-sweep.js';
 import { createFakeHost } from './fake-host.js';
+import { hasFlock, NO_FLOCK } from './flock.js';
 
 const lockOptions = () => ({ root: `/tmp/odw-sweep-${process.pid}-${Math.random().toString(16).slice(2)}` });
 
@@ -11,6 +12,12 @@ test('stale sweep removes only recorded ODW children after owning their parent l
   const child = await fake.ctx.session.create({ parentID: 'parent' });
   const other = await fake.ctx.session.create({ parentID: 'parent' });
   await ledger.add('parent', child.id);
+  if (!hasFlock) {
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() }), NO_FLOCK);
+    assert.deepEqual(fake.calls.remove, [], 'nothing is removed without owning the parent lock');
+    assert.equal((await ledger.entries()).length, 1);
+    return;
+  }
   const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() });
   assert.deepEqual(result.deleted, [child.id]);
   assert.deepEqual(fake.calls.remove, [child.id]);
@@ -25,6 +32,12 @@ test('stale sweep skips a parent that another process owns', async () => {
   await ledger.add('busy', child.id);
   const options = lockOptions();
   const { acquireSessionLock } = await import('../src/session-lock.js');
+  if (!hasFlock) {
+    await assert.rejects(() => acquireSessionLock('busy', options), NO_FLOCK);
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: options }), NO_FLOCK);
+    assert.deepEqual(fake.calls.remove, []);
+    return;
+  }
   const held = await acquireSessionLock('busy', options);
   try {
     const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: options });
@@ -43,6 +56,11 @@ test('stale sweep treats an already-deleted child as removed and keeps a ledger 
   const stuck = await fake.ctx.session.create({ parentID: 'parent' });
   await ledger.add('parent', stuck.id);
   fake.ctx.session.remove = async () => { throw new Error('remove failed'); };
+  if (!hasFlock) {
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() }), NO_FLOCK);
+    assert.equal((await ledger.entries()).length, 2, 'every ledger entry is kept for the next sweep');
+    return;
+  }
   const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() });
   assert.deepEqual(result.deleted, ['ses_gone']);
   assert.deepEqual(result.failed, [stuck.id]);
