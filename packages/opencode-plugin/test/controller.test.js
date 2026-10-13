@@ -2,17 +2,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createWorkflowController, parseControlArguments } from '../src/controller.js';
 import { createSessionState } from '../src/session-state.js';
+import { hasFlock, NO_FLOCK } from './flock.js';
 
 function harness() {
+  const backends = [];
   const state = createSessionState();
   const controller = createWorkflowController({
-    client: {},
+    host: {},
     directory: '/tmp',
     state,
     lockOptions: {
       root: `/tmp/odw-controller-${process.pid}-${Math.random().toString(16).slice(2)}`,
     },
-    createBackend: () => ({ invoke() {}, async dispose() {} }),
+    createBackend: (host, backendOptions) => {
+      backends.push({ host, backendOptions });
+      return { invoke() {}, async dispose() {} };
+    },
     createOrchestrator: () => ({
       async start() {
         return {
@@ -25,11 +30,15 @@ function harness() {
       reconcileNode(_id, nodeID, input) { return { nodeID, ...input }; },
     }),
   });
-  return { controller, state };
+  return { controller, state, backends };
 }
 
 test('controller owns one session lock and retains completed workflows', async () => {
   const { controller } = harness();
+  if (!hasFlock) {
+    await assert.rejects(() => controller.start({ sessionID: 'parent-1', prompt: 'one' }), NO_FLOCK);
+    return;
+  }
   const first = await controller.start({ sessionID: 'parent-1', prompt: 'one' });
   const second = await controller.start({ sessionID: 'parent-1', prompt: 'two', profile: 'quality' });
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -38,6 +47,23 @@ test('controller owns one session lock and retains completed workflows', async (
   assert.equal(workflows.find((item) => item.id === first.id).status, 'completed');
   assert.equal(workflows.find((item) => item.id === second.id).profile, 'quality');
   await controller.remove('parent-1');
+});
+
+test('controller hands the backend its parent session and workflow id', async () => {
+  const { controller, backends } = harness();
+  if (!hasFlock) {
+    await assert.rejects(() => controller.start({ sessionID: 'parent-2', prompt: 'one', agent: 'build' }), NO_FLOCK);
+    assert.equal(backends.length, 0, 'no backend is created for a workflow that cannot own its session');
+    return;
+  }
+  const workflow = await controller.start({ sessionID: 'parent-2', prompt: 'one', agent: 'build' });
+  assert.equal(backends.length, 1);
+  assert.deepEqual(backends[0].host, {});
+  assert.equal(backends[0].backendOptions.parentSessionID, 'parent-2');
+  assert.equal(backends[0].backendOptions.workflowID, workflow.id);
+  assert.equal(backends[0].backendOptions.agent, 'build');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await controller.remove('parent-2');
 });
 
 test('control parser is strict', () => {

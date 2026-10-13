@@ -6,7 +6,7 @@ import { extractJson, compileSchema } from 'odw-core';
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 
 export function createWorkflowController(options) {
-  const { client, directory, state, createOrchestrator, createBackend } = options;
+  const { host, directory, state, createOrchestrator, createBackend } = options;
 
   async function ownSession(sessionID) {
     const session = state.ensure(sessionID);
@@ -35,8 +35,9 @@ export function createWorkflowController(options) {
       children: [],
     });
 
-    const backend = createBackend(client, {
+    const backend = createBackend(host, {
       parentSessionID: sessionID,
+      workflowID: id,
       profile,
       agent,
       modelForRole: (role) => routeModel(profile, role),

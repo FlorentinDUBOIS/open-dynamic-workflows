@@ -1,19 +1,75 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sweepStaleChildren } from '../src/stale-sweep.js';
+import { createChildLedger, sweepStaleChildren } from '../src/stale-sweep.js';
+import { createFakeHost } from './fake-host.js';
+import { hasFlock, NO_FLOCK } from './flock.js';
 
-test('stale sweep deletes only ODW children after owning their parent lock', async () => {
-  const deleted = [];
-  const client = { session: {
-    list: async () => ([
-      { id: 'odw-child', parentID: 'parent', metadata: { odw: true } },
-      { id: 'normal-child', parentID: 'parent', metadata: {} },
-    ]),
-    delete: async ({ path }) => { deleted.push(path.id); },
-  } };
-  const result = await sweepStaleChildren(client, {
-    lockOptions: { root: `/tmp/odw-sweep-${process.pid}-${Math.random().toString(16).slice(2)}` },
-  });
-  assert.deepEqual(result.deleted, ['odw-child']);
-  assert.deepEqual(deleted, ['odw-child']);
+const lockOptions = () => ({ root: `/tmp/odw-sweep-${process.pid}-${Math.random().toString(16).slice(2)}` });
+
+test('stale sweep removes only recorded ODW children after owning their parent lock', async () => {
+  const fake = createFakeHost();
+  const ledger = createChildLedger(fake.ctx.storage);
+  const child = await fake.ctx.session.create({ parentID: 'parent' });
+  const other = await fake.ctx.session.create({ parentID: 'parent' });
+  await ledger.add('parent', child.id);
+  if (!hasFlock) {
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() }), NO_FLOCK);
+    assert.deepEqual(fake.calls.remove, [], 'nothing is removed without owning the parent lock');
+    assert.equal((await ledger.entries()).length, 1);
+    return;
+  }
+  const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() });
+  assert.deepEqual(result.deleted, [child.id]);
+  assert.deepEqual(fake.calls.remove, [child.id]);
+  assert.ok(fake.sessions.has(other.id), 'sessions the plugin never recorded are untouched');
+  assert.deepEqual(await ledger.entries(), [], 'a removed child leaves the ledger');
+});
+
+test('stale sweep skips a parent that another process owns', async () => {
+  const fake = createFakeHost();
+  const ledger = createChildLedger(fake.ctx.storage);
+  const child = await fake.ctx.session.create({ parentID: 'busy' });
+  await ledger.add('busy', child.id);
+  const options = lockOptions();
+  const { acquireSessionLock } = await import('../src/session-lock.js');
+  if (!hasFlock) {
+    await assert.rejects(() => acquireSessionLock('busy', options), NO_FLOCK);
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: options }), NO_FLOCK);
+    assert.deepEqual(fake.calls.remove, []);
+    return;
+  }
+  const held = await acquireSessionLock('busy', options);
+  try {
+    const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: options });
+    assert.deepEqual(result.contended, ['busy']);
+    assert.deepEqual(fake.calls.remove, []);
+    assert.equal((await ledger.entries()).length, 1);
+  } finally {
+    await held.release();
+  }
+});
+
+test('stale sweep treats an already-deleted child as removed and keeps a ledger entry it cannot remove', async () => {
+  const fake = createFakeHost();
+  const ledger = createChildLedger(fake.ctx.storage);
+  await ledger.add('parent', 'ses_gone');
+  const stuck = await fake.ctx.session.create({ parentID: 'parent' });
+  await ledger.add('parent', stuck.id);
+  fake.ctx.session.remove = async () => { throw new Error('remove failed'); };
+  if (!hasFlock) {
+    await assert.rejects(() => sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() }), NO_FLOCK);
+    assert.equal((await ledger.entries()).length, 2, 'every ledger entry is kept for the next sweep');
+    return;
+  }
+  const result = await sweepStaleChildren(fake.ctx, ledger, { lockOptions: lockOptions() });
+  assert.deepEqual(result.deleted, ['ses_gone']);
+  assert.deepEqual(result.failed, [stuck.id]);
+  assert.deepEqual((await ledger.entries()).map((entry) => entry.childID), [stuck.id]);
+});
+
+test('child ledger pages through every entry', async () => {
+  const fake = createFakeHost();
+  const ledger = createChildLedger(fake.ctx.storage);
+  for (let index = 0; index < 250; index++) await ledger.add(`parent-${index % 3}`, `ses_${String(index).padStart(4, '0')}`);
+  assert.equal((await ledger.entries()).length, 250);
 });

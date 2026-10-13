@@ -1,84 +1,105 @@
 /**
  * OpenCode host-model backend for ODW's embedded orchestrator.
  *
- * Maps an ODW agent job onto OpenCode's own SDK so every sub-agent runs on the
- * user's ALREADY-CONFIGURED model/auth — no external ODW key, no daemon. This is
+ * Maps an ODW agent job onto OpenCode's own plugin context so every sub-agent runs on
+ * the user's ALREADY-CONFIGURED model/auth — no external ODW key, no daemon. This is
  * the leaf that the embedded orchestrator calls in place of an external provider.
  *
- * Verified LIVE against OpenCode CLI 1.2.27 (not just SDK typings):
- *  - body.model is an OBJECT { providerID, modelID } — so we OMIT it to inherit
- *    the host's configured model (the keyless win); only set it if explicitly forced.
- *  - NEVER set noReply:true — it means "context only, do not generate" and the
- *    response echoes the USER parts back (20-50ms non-replies that are your own
- *    prompt). A normal prompt's response carries the assistant reply in the
- *    top-level `parts` array of an {info, parts} payload.
- *  - there is NO body.format / json_schema field — structured output is handled by
- *    the queue's existing schema-suffix + tolerant extractJson cascade upstream.
- *  - body.system is a first-class field for the system prompt.
- *  - body.agent defaults to "title": live OpenCode agents like "build" expose
- *    native tools, and those native tool-call turns steal the ODW text-protocol
- *    response. Set ODW_OPENCODE_AGENT or opts.agent to override deliberately.
- *  - session.prompt resolves (does NOT reject) on upstream failure, with empty
- *    parts and the error in payload.info.error.
+ * Written against the OpenCode 2 Promise plugin context (`ctx.session`), verified LIVE
+ * against OpenCode 2.0.28 (isolated server, local OpenAI-compatible mock):
+ *  - `session.prompt` is a QUEUED write: it resolves with the inbox entry, never with
+ *    the reply, and carries no agent/model/variant/system. The routing therefore moves
+ *    to `session.create` (agent, model {id, providerID, variant}, permissions,
+ *    metadata), the per-node system prompt is injected through a `context` session
+ *    hook (see createSystemPrompts), and the reply is read back from
+ *    `session.context` once the session has gone idle.
+ *  - `session.wait` resolves when the session's run settles, but it was observed to
+ *    resolve once while a provider retry was still pending. Every child is
+ *    single-use, so completion is only trusted when the transcript ends with the
+ *    `idle` marker message; otherwise the wait is repeated.
+ *  - The `idle` marker carries `outcome` (`succeeded`, `failed`, `interrupted`) and the
+ *    failing assistant message carries `error`; a failure without any reply text is
+ *    surfaced as the retryable `service_unavailable` the queue already understands.
+ *  - Cancellation is `session.interrupt`; the host retries a failing provider for
+ *    about 85 seconds on its own before reporting the failure, which is kept.
+ *  - There is NO model default: omitting `model` inherits the host's configured one.
+ *  - The `prompt` session hook also fires for the plugin's own child prompts, which is
+ *    why `onSessionCreate` must register a child before its prompt is sent.
  *
- * ISOLATION: every invoke() runs in a FRESH, SINGLE-USE child session. Without
- * noReply, prompts append to a session's conversation history — a reused/pooled
- * session would leak every previous agent's conversation into the next agent's
- * context (cross-task contamination + unbounded context growth). Create overhead
- * is ~tens of ms against multi-second model calls, and fresh sessions also give
- * unlimited parallel fan-out with zero same-session serialization.
+ * ISOLATION: every invoke() runs in a FRESH, SINGLE-USE child session. Prompts append
+ * to a session's conversation history, so a reused/pooled session would leak every
+ * previous agent's conversation into the next agent's context (cross-task
+ * contamination + unbounded context growth). Create overhead is ~tens of ms against
+ * multi-second model calls, and fresh sessions also give unlimited parallel fan-out
+ * with zero same-session serialization (30 parallel children verified live).
  *
- * DELETION IS DEFERRED to dispose() at end-of-run, NOT done per-call: deleting a
- * session immediately after its reply races OpenCode's own async work on that
- * session (title generation etc.) — verified live on 1.2.27, where an immediate
- * delete produced a server-side NotFoundError unhandled rejection and stalled
- * the workflow. Bulk deletion after the run (the pattern the original pool used)
- * is race-free.
+ * Children are NOT deleted per call or at dispose(): they stay attached to the parent
+ * so the TUI dashboard can show them, and OpenCode deletes them with the parent. The
+ * plugin's ledger lets the next start sweep the ones whose parent lock is gone.
  */
 
-export function createOpencodeBackend(client, opts = {}) {
+const SETTLE_POLL_MS = 250;
+
+/**
+ * Per-session system prompts. OpenCode 2 has no per-prompt `system` field, so the
+ * plugin registers one `context` hook that appends the entry for the requesting
+ * session; the backend sets it before the prompt and clears it afterwards.
+ */
+export function createSystemPrompts() {
+  const prompts = new Map();
+  return {
+    set: (sessionID, text) => prompts.set(sessionID, text),
+    delete: (sessionID) => prompts.delete(sessionID),
+    apply(event) {
+      const text = prompts.get(event?.sessionID);
+      if (text) event.system.push({ type: 'text', text });
+    },
+  };
+}
+
+export function createOpencodeBackend(host, opts = {}) {
   const created = [];
 
-  function readId(res) {
-    return res?.id ?? res?.data?.id ?? null;
-  }
-
   async function invoke(job, { signal } = {}) {
+    const sessions = host?.session;
     let id = null;
-    if (typeof client?.session?.create === 'function') {
+    let createError;
+    if (typeof sessions?.create === 'function') {
       try {
         let parent;
-        if (opts.parentSessionID && typeof client.session.get === 'function') {
+        if (opts.parentSessionID && typeof sessions.get === 'function') {
           try {
-            const response = await client.session.get({ path: { id: opts.parentSessionID } });
-            parent = response?.data ?? response;
+            parent = await sessions.get({ sessionID: opts.parentSessionID });
           } catch { /* a missing parent ruleset means the configured agent policy applies */ }
         }
         const routed = opts.modelForRole?.(job.role) ?? {};
         const model = resolveModel(job.model ?? routed.model ?? opts.model);
         const readOnly = job.role === 'reconstruction';
-        const body = {
-          title: `odw-${job.workflowId ?? 'workflow'}-${job.nodeId ?? created.length}`,
+        const agent = readOnly ? (opts.readOnlyAgent ?? 'plan') : opts.agent;
+        const permissions = readOnly ? readOnlyPermissions() : parent?.permissions;
+        const variant = job.variant ?? routed.variant;
+        const session = await sessions.create(defined({
+          title: `odw-${job.workflowId ?? opts.workflowID ?? 'workflow'}-${job.nodeId ?? created.length}`,
           parentID: opts.parentSessionID,
-          agent: readOnly ? (opts.readOnlyAgent ?? 'plan') : opts.agent,
-          model: model ? { id: model.modelID, providerID: model.providerID, variant: job.variant ?? routed.variant } : undefined,
-          metadata: {
+          agent: agent ? String(agent) : undefined,
+          model: model ? defined({ id: model.modelID, providerID: model.providerID, variant: variant ? String(variant) : undefined }) : undefined,
+          metadata: defined({
             odw: true,
             odwParentSessionID: opts.parentSessionID,
-            odwWorkflowID: job.workflowId,
+            odwWorkflowID: job.workflowId ?? opts.workflowID,
             odwNodeID: job.nodeId,
             odwRole: job.role,
             odwProfile: opts.profile,
             odwStartedAt: Date.now(),
-          },
-          permission: readOnly ? readOnlyPermissions() : parent?.permission,
-        };
-        id = readId(await client.session.create({ body }));
-      } catch { /* fall through to the caller-provided session below */ }
+          }),
+          permissions,
+        }));
+        id = session?.id ?? null;
+      } catch (error) { createError = error; /* fall through to the caller-provided session below */ }
       if (id) {
         created.push(id);
-        // Let the caller track ODW-owned sessions so its chat.message hook can
-        // skip them — child prompts MUST NOT re-trigger orchestration.
+        // Let the caller track ODW-owned sessions so its prompt hook can skip
+        // them — child prompts MUST NOT re-trigger orchestration.
         opts.onSessionCreate?.(id);
       }
     }
@@ -86,45 +107,23 @@ export function createOpencodeBackend(client, opts = {}) {
     // across calls (no isolation) — better than failing outright.
     if (!id && opts.sessionID) id = opts.sessionID;
     if (!id) {
-      throw new Error('opencode backend: no session available (client.session.create unavailable)');
+      throw new Error(
+        `opencode backend: no session available (session.create unavailable${createError ? `: ${String(createError?.message ?? createError)}` : ''})`,
+      );
     }
 
-    const body = {
-      parts: [{ type: 'text', text: String(job.prompt ?? '') }],
-    };
-    const agent = job.role === 'reconstruction' ? (opts.readOnlyAgent ?? 'plan') : opts.agent;
-    if (agent) body.agent = String(agent);
-    if (job.systemPrompt) body.system = String(job.systemPrompt);
-    const routed = opts.modelForRole?.(job.role) ?? {};
-    const model = resolveModel(job.model ?? routed.model ?? opts.model);
-    if (model) {
-      body.model = model;
-      if (job.variant ?? routed.variant) body.variant = String(job.variant ?? routed.variant);
+    let text = String(job.prompt ?? '');
+    if (job.systemPrompt) {
+      if (opts.systemPrompts) opts.systemPrompts.set(id, String(job.systemPrompt));
+      else text = `${job.systemPrompt}\n\n${text}`;
     }
-
-    const init = signal ? { signal } : undefined;
-    const res = await client.session.prompt({ path: { id }, body }, init);
-    const payload = res?.data ?? res ?? {};
-    const parts = payload.parts ?? payload.info?.parts ?? [];
-    const text = parts
-      .filter((p) => p && p.type === 'text' && typeof p.text === 'string')
-      .map((p) => p.text)
-      .join('');
-    if (process.env.ODW_DEBUG && !invoke._shapeLogged) {
-      invoke._shapeLogged = true;
-      console.error(`[odw] first invoke shape: hasData=${res?.data != null} keys=${Object.keys(payload).join(',')} parts.length=${parts.length} text.length=${text.length}`);
+    try {
+      await sessions.prompt({ sessionID: id, text });
+      const messages = await settle(sessions, id, signal);
+      return reply(messages);
+    } finally {
+      opts.systemPrompts?.delete(id);
     }
-    // An unreachable/failed upstream makes session.prompt RESOLVE with zero
-    // text and an error in info (verified live: ConnectionRefused → parts=[]).
-    // Native OpenCode tool-call turns also resolve with no ODW text-protocol
-    // JSON. Treat them as retryable host-protocol failures so they do not stall
-    // the embedded queue as empty schema-correction replies.
-    if (!text && payload.info?.error) {
-      const err = new Error(`opencode backend: empty reply — host error: ${JSON.stringify(payload.info.error).slice(0, 200)}`);
-      err.code = 'service_unavailable';
-      throw err;
-    }
-    return { text };
   }
 
   async function dispose() {
@@ -134,12 +133,80 @@ export function createOpencodeBackend(client, opts = {}) {
   return { invoke, dispose, createdSessions: () => [...created] };
 }
 
+/** Waits until the child's transcript ends with the `idle` marker and returns the transcript. */
+async function settle(sessions, sessionID, signal) {
+  const aborted = abortion(signal);
+  try {
+    for (;;) {
+      await race(sessions.wait({ sessionID }), aborted);
+      const messages = await race(sessions.context({ sessionID }), aborted);
+      if (messages?.at(-1)?.type === 'idle') return messages;
+      await race(sleep(SETTLE_POLL_MS), aborted);
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') await sessions.interrupt?.({ sessionID }).catch(() => {});
+    throw error;
+  } finally {
+    aborted?.dispose();
+  }
+}
+
+function reply(messages) {
+  const idle = messages.at(-1);
+  const assistant = [...messages].reverse().find((message) => message?.type === 'assistant');
+  const text = (assistant?.content ?? [])
+    .filter((part) => part && part.type === 'text' && typeof part.text === 'string')
+    .map((part) => part.text)
+    .join('');
+  if (process.env.ODW_DEBUG && !reply._shapeLogged) {
+    reply._shapeLogged = true;
+    console.error(`[odw] first reply shape: messages=${messages.length} outcome=${idle?.outcome} content=${(assistant?.content ?? []).map((part) => part?.type).join(',')} text.length=${text.length}`);
+  }
+  // An unreachable/failed upstream settles the session as `failed` with the error on
+  // the assistant message and the idle marker, and an interrupted one settles with an
+  // aborted step. Treat them as retryable host-protocol failures so they do not stall
+  // the embedded queue as empty schema-correction replies. A turn that only ran
+  // native OpenCode tools resolves with no ODW text-protocol JSON and is returned as-is.
+  const failure = assistant?.error ?? idle?.error;
+  if (!text && (failure || idle?.outcome === 'failed' || idle?.outcome === 'interrupted')) {
+    const err = new Error(`opencode backend: empty reply — host error: ${JSON.stringify(failure ?? { outcome: idle?.outcome }).slice(0, 200)}`);
+    err.code = 'service_unavailable';
+    throw err;
+  }
+  return { text };
+}
+
+function abortion(signal) {
+  if (!signal) return null;
+  const error = () => Object.assign(new Error('opencode backend: aborted'), { name: 'AbortError' });
+  let listener;
+  const promise = new Promise((_, reject) => {
+    if (signal.aborted) return reject(error());
+    listener = () => reject(error());
+    signal.addEventListener('abort', listener, { once: true });
+  });
+  promise.catch(() => {});
+  return { promise, dispose: () => listener && signal.removeEventListener('abort', listener) };
+}
+
+function race(promise, aborted) {
+  return aborted ? Promise.race([promise, aborted.promise]) : promise;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function defined(object) {
+  return Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+}
+
 function readOnlyPermissions() {
   return [
-    { permission: 'edit', pattern: '*', action: 'deny' },
-    { permission: 'bash', pattern: '*', action: 'deny' },
-    { permission: 'task', pattern: '*', action: 'deny' },
-    { permission: 'slack_*', pattern: '*', action: 'deny' },
+    { action: 'edit', resource: '*', effect: 'deny' },
+    { action: 'shell', resource: '*', effect: 'deny' },
+    { action: 'subagent', resource: '*', effect: 'deny' },
+    { action: 'slack_*', resource: '*', effect: 'deny' },
   ];
 }
 

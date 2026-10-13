@@ -3,14 +3,13 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { registerTimedLeader } from "@opentui/keymap/addons/opentui";
-import { createTestKeymap } from "@opentui/keymap/testing";
 import { testRender } from "@opentui/solid";
 import { ensureRuntimePluginSupport } from "@opentui/solid/runtime-plugin-support/configure";
+import { createStore } from "solid-js/store";
 
 ensureRuntimePluginSupport();
 
-test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", async () => {
+test("tracked TUI bundle loads through OpenTUI and uses the v2 plugin context", async () => {
   const root = mkdtempSync(join(tmpdir(), "odw-tui-"));
   try {
     writeFileSync(join(root, "package.json"), '{"type":"module"}');
@@ -20,15 +19,20 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
     const mod = await import(`${pathToFileURL(bundle).href}?test=${Date.now()}`);
     expect(Object.keys(mod)).toEqual(["default"]);
     expect(mod.default.id).toBe("open-dynamic-workflows");
-    expect(typeof mod.default.tui).toBe("function");
+    expect(typeof mod.default.setup).toBe("function");
 
-    const childrenRequests: unknown[] = [];
+    const listRequests: unknown[] = [];
     const commandRequests: unknown[] = [];
-    const layers: any[] = [];
+    const syncedMessages: string[] = [];
     const navigationRequests: unknown[] = [];
-    const routes: any[] = [];
+    const toasts: any[] = [];
+    let failCommands = false;
+    const pushedModes: string[] = [];
+    const layers: any[] = [];
+    const pages: any[] = [];
     const slots: any[] = [];
-    const disposals: Array<() => void> = [];
+    const listeners: Array<(event: { details: { type: string } }) => void> = [];
+    let unsubscribed = 0;
     const child = {
       id: "child",
       parentID: "parent",
@@ -41,156 +45,133 @@ test("tracked TUI bundle loads through OpenTUI and uses the v2 session client", 
       },
       time: { created: 1, updated: 2 },
     };
+    const color = (value: string) => ({ base: value, muted: value });
 
-    const api = {
-      kv: { get: (_key: string, fallback: unknown) => fallback, set() {} },
+    const context = {
+      storage: {
+        store: (_key: string, options: { initial: object }) => {
+          const [store, set] = createStore(options.initial as { collapsed: boolean });
+          return [store, async (mutation: (draft: { collapsed: boolean }) => void) => set((draft) => mutation(draft))];
+        },
+      },
       client: { session: {
-        children: async (request: unknown) => {
-          childrenRequests.push(request);
-          return { data: [child] };
+        list: async (request: unknown) => {
+          listRequests.push(request);
+          return { data: [child], cursor: {} };
         },
         command: async (request: unknown) => {
           commandRequests.push(request);
-          return { data: undefined };
+          if (failCommands) throw new Error("workflow is already completed");
         },
       } },
-      state: { session: {
-        status: () => ({ type: "busy" }),
-        messages: () => [],
-      } },
-      route: {
-        register: (items: any[]) => {
-          routes.push(...items);
-          return () => {};
+      data: {
+        listen: (handler: (event: { details: { type: string } }) => void) => {
+          listeners.push(handler);
+          return () => { unsubscribed++; };
         },
-        current: { name: "session", params: { sessionID: "parent" } },
-        navigate: (name: string, params: unknown) => navigationRequests.push({ name, params }),
+        session: {
+          status: () => "running",
+          message: {
+            list: () => [],
+            sync: async (id: string) => { syncedMessages.push(id); },
+          },
+        },
       },
-      mode: { push: () => () => {} },
       keymap: {
-        registerLayer: (layer: any) => {
-          layers.push(layer);
-          return () => {};
-        },
+        layer: (factory: () => any) => { layers.push(factory()); },
+        mode: { push: (mode: string) => { pushedModes.push(mode); return () => {}; } },
       },
-      event: { on: () => () => {} },
-      slots: {
-        register: (slot: any) => {
-          slots.push(slot);
-          return "open-dynamic-workflows";
+      ui: {
+        router: {
+          register: (page: any) => { pages.push(page); return () => {}; },
+          current: () => ({ type: "session", sessionID: "parent" }),
+          navigate: (destination: unknown) => navigationRequests.push(destination),
         },
+        slot: (claim: any) => { slots.push(claim); return () => {}; },
+        toast: { show: (toast: unknown) => toasts.push(toast) },
       },
-      lifecycle: {
-        onDispose: (dispose: () => void) => {
-          disposals.push(dispose);
-          return () => {};
-        },
-      },
-      theme: { current: {
-        text: "#ffffff",
-        textMuted: "#888888",
-        error: "#ff0000",
-        warning: "#ffff00",
-        success: "#00ff00",
-        accent: "#00ffff",
+      theme: { text: {
+        base: "#ffffff",
+        muted: "#888888",
+        action: { primary: color("#00ffff") },
+        feedback: { error: color("#ff0000"), warning: color("#ffff00"), success: color("#00ff00"), info: color("#0000ff") },
       } },
     };
 
-    await mod.default.tui(api);
+    const cleanup = await mod.default.setup(context);
+    expect(typeof cleanup).toBe("function");
 
+    expect(slots).toHaveLength(1);
+    expect(slots[0].append).toBe("sidebar.content");
     const sidebar = await testRender(
-      () => slots[0].slots.sidebar_content({}, { session_id: "parent" }),
+      () => slots[0].render({ sessionID: "parent" }),
       { width: 80, height: 24 },
     );
     try {
       await Bun.sleep(0);
       await sidebar.flush();
-      expect(childrenRequests[0]).toEqual({ sessionID: "parent" });
+      expect(listRequests[0]).toEqual({ parentID: "parent", limit: 200, order: "asc" });
+      expect(syncedMessages).toEqual(["child"]);
       expect(sidebar.captureCharFrame()).toContain("Workflows (");
     } finally {
       sidebar.renderer.destroy();
     }
 
-    const palette = layers.find((layer) => layer.commands?.some(
-      (command: any) => command.name === "odw.dashboard.open",
-    ));
-    expect(palette.mode).toBeUndefined();
+    const palette = layers.find((layer) => layer.commands?.some((command: any) => command.id === "odw.dashboard.open"));
+    expect(palette.mode).toBe("global");
     expect(palette.commands).toContainEqual(expect.objectContaining({
-      name: "odw.dashboard.open",
+      id: "odw.dashboard.open",
       title: "Open Workflows Dashboard",
-      category: "Workflows",
+      group: "Workflows",
+      palette: true,
+      bind: "<leader>w",
     }));
+    palette.commands[0].run();
+    expect(navigationRequests.at(-1)).toEqual({ type: "plugin", name: "odw-dashboard", data: { sessionID: "parent" } });
 
-    const base = layers.find((layer) => layer.mode === "base");
-    expect(base.bindings).toContainEqual(expect.objectContaining({
-      key: "<leader>w",
-      cmd: "odw.dashboard.open",
-      desc: "Workflows dashboard",
-    }));
+    const base = layers.find((layer) => layer.bindings?.includes("odw.dashboard.open"));
+    expect(base.mode).toBeUndefined();
 
-    const harness = createTestKeymap({ defaultKeys: true });
-    const unregisterMode = harness.keymap.registerLayerFields({
-      mode(value, ctx) {
-        ctx.require("opencode.mode", value);
-      },
-    });
-    const unregisterLeader = registerTimedLeader(harness.keymap, {
-      trigger: "ctrl+x",
-      name: "leader",
-    });
-    const unregisterLayers = layers.map((layer) => harness.keymap.registerLayer(layer));
-    try {
-      harness.keymap.setData("opencode.mode", "modal");
-      const commands = harness.keymap.getCommandEntries({
-        namespace: "palette",
-        visibility: "reachable",
-      });
-      expect(commands.map((entry) => entry.command.name)).toContain("odw.dashboard.open");
-      expect(harness.keymap.getCommandBindings({
-        commands: ["odw.dashboard.open"],
-        visibility: "reachable",
-      }).get("odw.dashboard.open") ?? []).toHaveLength(0);
-      expect(harness.keymap.dispatchCommand("odw.dashboard.open").ok).toBe(true);
-      expect(navigationRequests.at(-1)).toEqual({
-        name: "odw-dashboard",
-        params: { sessionID: "parent" },
-      });
-
-      harness.keymap.setData("opencode.mode", "base");
-      expect(harness.keymap.getCommandBindings({
-        commands: ["odw.dashboard.open"],
-        visibility: "reachable",
-      }).get("odw.dashboard.open") ?? []).toHaveLength(1);
-    } finally {
-      for (const unregister of unregisterLayers.reverse()) unregister();
-      unregisterLeader();
-      unregisterMode();
-      harness.cleanup();
-    }
-
-    const route = routes.find((item) => item.name === "odw-dashboard");
+    const page = pages.find((item) => item.name === "odw-dashboard");
     const dashboard = await testRender(
-      () => route.render({ params: { sessionID: "parent" } }),
+      () => page.render({ data: { sessionID: "parent" } }),
       { width: 100, height: 30 },
     );
     try {
-      await dashboard.waitForFrame((frame) => frame.includes("Workflows"));
+      await dashboard.waitForFrame((frame) => frame.includes("Workflows") && frame.includes("analysis"));
+      expect(pushedModes).toEqual(["odw.dashboard"]);
     } finally {
       dashboard.renderer.destroy();
     }
 
     const controls = layers.find((layer) => layer.mode === "odw.dashboard");
+    expect(controls.bindings).toEqual(controls.commands.map((command: any) => command.id));
     for (const [key, action] of [["p", "pause"], ["r", "resume"], ["s", "stop"]]) {
-      controls.bindings.find((binding: any) => binding.key === key).cmd();
+      controls.commands.find((command: any) => command.bind === key).run();
       await Bun.sleep(0);
       expect(commandRequests.at(-1)).toEqual({
         sessionID: "parent",
-        command: "odw-control",
-        arguments: `odw_ab12 ${action}`,
+        name: "odw-control",
+        text: `odw_ab12 ${action}`,
       });
     }
+    failCommands = true;
+    controls.commands.find((command: any) => command.bind === "p").run();
+    await Bun.sleep(0);
+    expect(toasts).toEqual([{ variant: "error", title: "Workflows", message: "workflow is already completed" }]);
+    controls.commands.find((command: any) => command.bind === "escape").run();
+    expect(navigationRequests.at(-1)).toEqual({ type: "session", sessionID: "parent" });
 
-    for (const dispose of disposals) dispose();
+    const before = listRequests.length;
+    for (const listener of listeners) listener({ details: { type: "message.unrelated" } });
+    await Bun.sleep(0);
+    expect(listRequests).toHaveLength(before);
+    for (const listener of listeners) listener({ details: { type: "session.step.ended" } });
+    await Bun.sleep(0);
+    expect(listRequests.length).toBeGreaterThan(before);
+
+    cleanup();
+    expect(unsubscribed).toBe(1);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

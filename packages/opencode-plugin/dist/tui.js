@@ -1,206 +1,236 @@
 // packages/opencode-plugin/src/tui.ts
-import { createElement as D, insert as y, setProp as h } from "@opentui/solid";
-import { createSignal as v, onCleanup as _ } from "solid-js";
+import { createElement as D, insert as v, setProp as h } from "@opentui/solid";
+import { createEffect as q, createSignal as E, onCleanup as H, untrack as U } from "solid-js";
 
 // packages/opencode-plugin/src/tui-state.js
-function P(e, t, s, r) {
-  let u = /* @__PURE__ */ new Map;
-  for (let o of t ?? []) {
-    let n = o?.metadata ?? {};
-    if (o?.parentID !== e || n.odw !== !0)
+function C(e, o, t, i) {
+  let a = /* @__PURE__ */ new Map;
+  for (let r of o ?? []) {
+    let d = r?.metadata ?? {};
+    if (r?.parentID !== e || d.odw !== !0)
       continue;
-    if (n.odwParentSessionID && n.odwParentSessionID !== e)
+    if (d.odwParentSessionID && d.odwParentSessionID !== e)
       continue;
-    let a = k(n.odwWorkflowID);
-    if (!a)
+    let n = k(d.odwWorkflowID);
+    if (!n)
       continue;
-    let i = u.get(a);
-    if (!i)
-      i = {
-        id: a,
+    let l = a.get(n);
+    if (!l)
+      l = {
+        id: n,
         parentSessionID: e,
-        profile: k(n.odwProfile) ?? "balanced",
+        profile: k(d.odwProfile) ?? "balanced",
         status: "completed",
         children: [],
         nodes: [],
-        startedAt: E(n.odwStartedAt) ?? o.time?.created,
-        updatedAt: o.time?.updated ?? o.time?.created
-      }, u.set(a, i);
-    let g = s(o.id)?.type ?? "idle", m = [...r(o.id) ?? []].reverse().find((b) => b.role === "assistant"), w = {
-      sessionID: o.id,
-      nodeID: k(n.odwNodeID) ?? o.id,
-      role: k(n.odwRole) ?? "agent",
-      model: O(o, m),
-      status: W(g, m),
-      durationMs: S(o, m),
-      error: m?.error ? String(m.error?.message ?? m.error) : void 0
+        startedAt: L(d.odwStartedAt) ?? r.time?.created,
+        updatedAt: r.time?.updated ?? r.time?.created
+      }, a.set(n, l);
+    let w = t(r.id) ?? "idle", c = [...i(r.id) ?? []].reverse().find((b) => b.type === "assistant"), m = {
+      sessionID: r.id,
+      nodeID: k(d.odwNodeID) ?? r.id,
+      role: k(d.odwRole) ?? "agent",
+      model: T(r, c),
+      status: _(w, c),
+      durationMs: F(r, c),
+      error: c?.error ? String(c.error?.message ?? c.error) : void 0
     };
-    if (i.children.push(o.id), i.nodes.push(w), w.status === "running" || w.status === "retrying")
-      i.status = "running";
-    else if (w.status === "error" && i.status !== "running")
-      i.status = "failed";
-    i.updatedAt = Math.max(i.updatedAt ?? 0, o.time?.updated ?? m?.time?.completed ?? 0);
+    if (l.children.push(r.id), l.nodes.push(m), m.status === "running" || m.status === "retrying")
+      l.status = "running";
+    else if (m.status === "error" && l.status !== "running")
+      l.status = "failed";
+    l.updatedAt = Math.max(l.updatedAt ?? 0, r.time?.updated ?? c?.time?.completed ?? 0);
   }
-  return [...u.values()].sort((o, n) => (n.updatedAt ?? 0) - (o.updatedAt ?? 0));
+  return [...a.values()].sort((r, d) => (d.updatedAt ?? 0) - (r.updatedAt ?? 0));
 }
-function W(e, t) {
-  if (e === "busy")
-    return "running";
-  if (e === "retry")
-    return "retrying";
-  if (t?.error)
+function _(e, o, t = Date.now()) {
+  if (e === "running")
+    return o?.retry?.at > t ? "retrying" : "running";
+  if (o?.error)
     return "error";
-  return t?.time?.completed ? "completed" : "queued";
+  return o?.time?.completed ? "completed" : "queued";
 }
-function O(e, t) {
-  let s = t?.model ?? e?.model;
-  if (typeof s === "string")
-    return s;
-  if (s?.providerID && s?.modelID)
-    return `${s.providerID}/${s.modelID}`;
+function T(e, o) {
+  let t = o?.model ?? e?.model;
+  if (typeof t === "string")
+    return t;
+  if (t?.providerID && t?.id)
+    return `${t.providerID}/${t.id}`;
   return;
 }
-function S(e, t) {
-  let s = e.time?.created ?? t?.time?.created, r = t?.time?.completed ?? e.time?.updated;
-  return s && r ? Math.max(0, r - s) : void 0;
+function F(e, o) {
+  let t = e.time?.created ?? o?.time?.created, i = o?.time?.completed ?? e.time?.updated;
+  return t && i ? Math.max(0, i - t) : void 0;
 }
 function k(e) {
   return typeof e === "string" && e.length ? e : void 0;
 }
-function E(e) {
+function L(e) {
   return Number.isFinite(e) ? e : void 0;
 }
-function $(e, t) {
+function x(e, o) {
   if (!/^odw_[a-f0-9]+$/.test(e))
     throw Error("invalid ODW workflow id");
-  if (!["pause", "resume", "stop", "replay", "skip"].includes(t))
+  if (!["pause", "resume", "stop", "replay", "skip"].includes(o))
     throw Error("invalid ODW control action");
-  return { command: "odw-control", arguments: `${e} ${t}` };
+  return { name: "odw-control", text: `${e} ${o}` };
 }
 
 // packages/opencode-plugin/src/tui.ts
-var L = "open-dynamic-workflows", M = "odw.sidebar.collapsed", A = "odw.dashboard", N = async (e) => {
-  let [t, s] = v([]), [r, u] = v(), [o, n] = v(e.kv.get(M, !1)), a = async (d) => {
-    let l = d ?? r();
-    if (!l)
+var V = "open-dynamic-workflows", W = "odw-dashboard", O = "odw.dashboard", M = "odw.dashboard.open", j = 200, G = [
+  "session.created",
+  "session.deleted",
+  "session.status",
+  "session.execution.started",
+  "session.execution.succeeded",
+  "session.execution.failed",
+  "session.execution.interrupted",
+  "session.step.started",
+  "session.step.ended",
+  "session.step.failed",
+  "session.retry.scheduled"
+];
+async function z(e) {
+  let [o, t] = E([]), [i, a] = E(), [r, d] = e.storage.store("sidebar", { initial: { collapsed: !1 } }), n = /* @__PURE__ */ new Set, l, w = !1, P = async (s) => {
+    let f = (await e.client.session.list({ parentID: s, limit: j, order: "asc" })).data ?? [];
+    for (let g of f)
+      if (!n.has(g.id))
+        n.add(g.id), e.data.session.message.sync(g.id).catch(() => n.delete(g.id));
+    t(f);
+  }, c = async (s) => {
+    let u = s ?? i();
+    if (!u)
       return;
-    u(l);
-    let c = await e.client.session.children({ sessionID: l });
-    s(c.data ?? c);
-  }, i = () => P(r() ?? "", t(), (d) => e.state.session.status(d), (d) => e.state.session.messages(d)), g = async (d, l) => {
-    let c = r();
-    if (!c)
+    if (a(u), l)
+      return w = !0, l;
+    if (l = P(u).catch(() => {
       return;
-    let p = $(d, l);
-    await e.client.session.command({ sessionID: c, ...p }), await a(c);
-  }, I = () => {
-    let d = !o();
-    n(d), e.kv.set(M, d);
-  }, m = e.route.register([{
-    name: "odw-dashboard",
-    render: ({ params: d }) => {
-      let l = typeof d?.sessionID === "string" ? d.sessionID : r();
-      a(l);
-      let c = e.mode.push(A);
-      _(c);
-      let p = D("box");
-      return h(p, "flexDirection", "column"), h(p, "padding", 1), y(p, () => q(e, i(), g)), p;
+    }).finally(() => {
+      l = void 0;
+    }), await l, w)
+      w = !1, await c();
+  }, m = () => C(i() ?? "", o(), (s) => e.data.session.status(s), (s) => e.data.session.message.list(s)), b = async (s, u) => {
+    let f = i();
+    if (!f)
+      return;
+    try {
+      await e.client.session.command({ sessionID: f, ...x(s, u) });
+    } catch (g) {
+      e.ui.toast.show({ variant: "error", title: "Workflows", message: g instanceof Error ? g.message : String(g) });
     }
-  }]), w = e.keymap.registerLayer({
+    await c(f);
+  }, y = (s) => () => {
+    let u = m()[0];
+    if (u)
+      b(u.id, s);
+  }, S = () => {
+    d((s) => {
+      s.collapsed = !s.collapsed;
+    }).catch((s) => console.error("Failed to persist the Workflows sidebar state", s));
+  }, A = () => {
+    let s = e.ui.router.current(), u = s.type === "session" ? s.sessionID : i();
+    if (u)
+      e.ui.router.navigate({ type: "plugin", name: W, data: { sessionID: u } });
+  }, N = () => {
+    let s = i();
+    if (s)
+      e.ui.router.navigate({ type: "session", sessionID: s });
+  };
+  e.ui.router.register({
+    name: W,
+    render: ({ data: s }) => {
+      let u = typeof s?.sessionID === "string" ? s.sessionID : i();
+      c(u), H(e.keymap.mode.push(O));
+      let f = D("box");
+      return h(f, "flexDirection", "column"), h(f, "padding", 1), v(f, () => J(e, m(), b)), f;
+    }
+  }), e.keymap.layer(() => ({
+    mode: "global",
     commands: [{
-      name: "odw.dashboard.open",
+      id: M,
       title: "Open Workflows Dashboard",
-      category: "Workflows",
-      namespace: "palette",
-      run() {
-        let d = e.route.current, l = d.name === "session" ? d.params.sessionID : r();
-        if (l)
-          e.route.navigate("odw-dashboard", { sessionID: l });
-      }
-    }],
-    bindings: []
-  }), b = e.keymap.registerLayer({
-    mode: "base",
-    bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "Workflows dashboard" }]
-  }), C = e.keymap.registerLayer({
-    mode: A,
-    bindings: [
-      { key: "escape", cmd: () => r() && e.route.navigate("session", { sessionID: r() }), desc: "Close dashboard" },
-      { key: "p", cmd: () => i()[0] && void g(i()[0].id, "pause"), desc: "Pause newest workflow" },
-      { key: "r", cmd: () => i()[0] && void g(i()[0].id, "resume"), desc: "Resume newest workflow" },
-      { key: "s", cmd: () => i()[0] && void g(i()[0].id, "stop"), desc: "Stop newest workflow" }
-    ]
-  }), T = [
-    e.event.on("session.created", () => void a()),
-    e.event.on("session.updated", () => void a()),
-    e.event.on("session.status", () => void a()),
-    e.event.on("message.updated", () => void a())
-  ];
-  e.slots.register({
-    order: 210,
-    slots: {
-      sidebar_content(d, l) {
-        a(l.session_id);
-        let c = D("box");
-        return h(c, "flexDirection", "column"), h(c, "paddingTop", 1), y(c, () => R(e, i(), o(), I)), c;
-      }
-    }
-  }), e.lifecycle.onDispose(() => {
-    m(), w(), b(), C();
-    for (let d of T)
-      d();
+      group: "Workflows",
+      palette: !0,
+      bind: "<leader>w",
+      run: A
+    }]
+  })), e.keymap.layer(() => ({ bindings: [M] })), e.keymap.layer(() => ({
+    mode: O,
+    commands: [
+      { id: "odw.dashboard.close", title: "Close Workflows dashboard", bind: "escape", run: N },
+      { id: "odw.dashboard.pause", title: "Pause newest workflow", bind: "p", run: y("pause") },
+      { id: "odw.dashboard.resume", title: "Resume newest workflow", bind: "r", run: y("resume") },
+      { id: "odw.dashboard.stop", title: "Stop newest workflow", bind: "s", run: y("stop") }
+    ],
+    bindings: ["odw.dashboard.close", "odw.dashboard.pause", "odw.dashboard.resume", "odw.dashboard.stop"]
+  }));
+  let R = e.data.listen(({ details: s }) => {
+    if (G.includes(s.type))
+      c();
   });
-};
-function R(e, t, s, r) {
-  let u = t.filter((n) => n.status === "running").length, o = [f(`${s ? "▶" : "▼"} Workflows (${u} active, ${t.length} total)`, {
-    fg: e.theme.current.text,
+  return e.ui.slot({
+    append: "sidebar.content",
+    render: (s) => {
+      q(() => {
+        let f = s.sessionID;
+        U(() => void c(f));
+      });
+      let u = D("box");
+      return h(u, "flexDirection", "column"), h(u, "paddingTop", 1), v(u, () => B(e, m(), r.collapsed, S)), u;
+    }
+  }), R;
+}
+function B(e, o, t, i) {
+  let a = e.theme, r = o.filter((n) => n.status === "running").length, d = [p(`${t ? "▶" : "▼"} Workflows (${r} active, ${o.length} total)`, {
+    fg: a.text.base,
     bold: !0,
     onMouseDown: (n) => {
       if (n.button === 0)
-        n.stopPropagation(), r();
+        n.stopPropagation(), i();
     }
   })];
-  if (s)
-    return o;
-  if (!t.length)
-    return [...o, f("  idle", { fg: e.theme.current.textMuted })];
-  for (let n of t)
-    o.push(f(`  • ${n.id.slice(0, 14)} ${n.status}`, { fg: x(e, n.status) })), o.push(f(`    ${n.profile} · ${n.nodes.length} nodes`, { fg: e.theme.current.textMuted }));
-  return o;
+  if (t)
+    return d;
+  if (!o.length)
+    return [...d, p("  idle", { fg: a.text.muted })];
+  for (let n of o)
+    d.push(p(`  • ${n.id.slice(0, 14)} ${n.status}`, { fg: I(e, n.status) })), d.push(p(`    ${n.profile} · ${n.nodes.length} nodes`, { fg: a.text.muted }));
+  return d;
 }
-function q(e, t, s) {
-  let r = [f("Workflows", { fg: e.theme.current.text, bold: !0 })];
-  if (r.push(f("p pause · r resume · s stop · esc close", { fg: e.theme.current.textMuted })), !t.length)
-    return [...r, f("No workflows for this session.", { fg: e.theme.current.textMuted })];
-  for (let u of t) {
-    r.push(f(`${u.id}  ${u.status}  ${u.profile}`, { fg: x(e, u.status), bold: !0 }));
-    for (let n of u.nodes)
-      if (r.push(f(`  • ${n.nodeID} ${n.role} ${n.status}${n.model ? ` ${n.model}` : ""}`, { fg: x(e, n.status) })), n.error)
-        r.push(f(`    ${n.error}`, { fg: e.theme.current.error }));
-    let o = f("  [pause] [resume] [stop]", {
-      fg: e.theme.current.accent,
-      onMouseDown: () => void s(u.id, u.status === "running" ? "pause" : "resume")
+function J(e, o, t) {
+  let i = e.theme, a = [p("Workflows", { fg: i.text.base, bold: !0 })];
+  if (a.push(p("p pause · r resume · s stop · esc close", { fg: i.text.muted })), !o.length)
+    return [...a, p("No workflows for this session.", { fg: i.text.muted })];
+  for (let r of o) {
+    a.push(p(`${r.id}  ${r.status}  ${r.profile}`, { fg: I(e, r.status), bold: !0 }));
+    for (let n of r.nodes)
+      if (a.push(p(`  • ${n.nodeID} ${n.role} ${n.status}${n.model ? ` ${n.model}` : ""}`, { fg: I(e, n.status) })), n.error)
+        a.push(p(`    ${n.error}`, { fg: i.text.feedback.error.base }));
+    let d = p("  [pause] [resume] [stop]", {
+      fg: i.text.action.primary.base,
+      onMouseDown: () => void t(r.id, r.status === "running" ? "pause" : "resume")
     });
-    r.push(o);
+    a.push(d);
   }
-  return r;
+  return a;
 }
-function x(e, t) {
-  if (t === "failed" || t === "error")
-    return e.theme.current.error;
-  if (t === "retrying" || t === "paused" || t === "reconciliation-required")
-    return e.theme.current.warning;
-  if (t === "running" || t === "completed")
-    return e.theme.current.success;
-  return e.theme.current.textMuted;
+function I(e, o) {
+  let t = e.theme;
+  if (o === "failed" || o === "error")
+    return t.text.feedback.error.base;
+  if (o === "retrying" || o === "paused" || o === "reconciliation-required")
+    return t.text.feedback.warning.base;
+  if (o === "running" || o === "completed")
+    return t.text.feedback.success.base;
+  return t.text.muted;
 }
-function f(e, t = {}) {
-  let s = D("text");
-  for (let [r, u] of Object.entries(t))
-    h(s, r, u);
-  return y(s, e), s;
+function p(e, o = {}) {
+  let t = D("text");
+  for (let [i, a] of Object.entries(o))
+    h(t, i, a);
+  return v(t, e), t;
 }
-var K = { id: L, tui: N }, z = K;
+var K = { id: V, setup: z }, oe = K;
 export {
-  z as default
+  oe as default
 };
