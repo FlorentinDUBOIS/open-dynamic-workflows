@@ -230,7 +230,7 @@ async function runEmbedded(client, effective, directory, options = {}) {
   let createEmbeddedOrchestrator, createOpencodeBackend;
   try {
     ({ createEmbeddedOrchestrator } = await import('odw-daemon/embedded'));
-    ({ createOpencodeBackend } = await import('./host-provider.js'));
+    ({ createOpencodeBackend } = await import('./host-provider-v1.js'));
   } catch (error) {
     if (process.env.ODW_DEBUG) console.error('[odw] embedded import failed:', error?.message, error?.stack);
     return null; // embedded engine deps not installed (drop-in mode)

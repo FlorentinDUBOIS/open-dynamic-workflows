@@ -20,9 +20,9 @@ export function collectOdwWorkflows(parentSessionID, children, statusOf, message
       };
       workflows.set(workflowID, workflow);
     }
-    const status = statusOf(child.id)?.type ?? 'idle';
+    const status = statusOf(child.id) ?? 'idle';
     const messages = messagesOf(child.id) ?? [];
-    const assistant = [...messages].reverse().find((message) => message.role === 'assistant');
+    const assistant = [...messages].reverse().find((message) => message.type === 'assistant');
     const node = {
       sessionID: child.id,
       nodeID: string(metadata.odwNodeID) ?? child.id,
@@ -41,9 +41,8 @@ export function collectOdwWorkflows(parentSessionID, children, statusOf, message
   return [...workflows.values()].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }
 
-function nodeStatus(status, assistant) {
-  if (status === 'busy') return 'running';
-  if (status === 'retry') return 'retrying';
+function nodeStatus(status, assistant, now = Date.now()) {
+  if (status === 'running') return assistant?.retry?.at > now ? 'retrying' : 'running';
   if (assistant?.error) return 'error';
   return assistant?.time?.completed ? 'completed' : 'queued';
 }
@@ -51,7 +50,7 @@ function nodeStatus(status, assistant) {
 function modelOf(child, assistant) {
   const model = assistant?.model ?? child?.model;
   if (typeof model === 'string') return model;
-  if (model?.providerID && model?.modelID) return `${model.providerID}/${model.modelID}`;
+  if (model?.providerID && model?.id) return `${model.providerID}/${model.id}`;
   return undefined;
 }
 
@@ -72,5 +71,5 @@ function number(value) {
 export function controlCommand(workflowID, action) {
   if (!/^odw_[a-f0-9]+$/.test(workflowID)) throw new Error('invalid ODW workflow id');
   if (!['pause', 'resume', 'stop', 'replay', 'skip'].includes(action)) throw new Error('invalid ODW control action');
-  return { command: 'odw-control', arguments: `${workflowID} ${action}` };
+  return { name: 'odw-control', text: `${workflowID} ${action}` };
 }

@@ -1,151 +1,202 @@
-import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui";
+import type { Plugin } from "@opencode/plugin/tui";
 import { createElement, insert, setProp } from "@opentui/solid";
-import { createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, onCleanup, untrack } from "solid-js";
 import { collectOdwWorkflows, controlCommand } from "./tui-state.js";
 
 const PLUGIN_ID = "open-dynamic-workflows";
-const COLLAPSED_KEY = "odw.sidebar.collapsed";
+const ROUTE = "odw-dashboard";
 const MODE = "odw.dashboard";
+const OPEN_COMMAND = "odw.dashboard.open";
+const CHILD_LIMIT = 200;
+const REFRESH_EVENTS = [
+  "session.created",
+  "session.deleted",
+  "session.status",
+  "session.execution.started",
+  "session.execution.succeeded",
+  "session.execution.failed",
+  "session.execution.interrupted",
+  "session.step.started",
+  "session.step.ended",
+  "session.step.failed",
+  "session.retry.scheduled",
+];
 
-const tui: TuiPlugin = async (api: TuiPluginApi) => {
+type Control = "pause" | "resume" | "stop";
+
+async function setup(context: Plugin.Context): Promise<() => void> {
   const [children, setChildren] = createSignal<unknown[]>([]);
   const [parentID, setParentID] = createSignal<string>();
-  const [collapsed, setCollapsed] = createSignal(api.kv.get(COLLAPSED_KEY, false));
+  const [view, updateView] = context.storage.store("sidebar", { initial: { collapsed: false } });
+  const synced = new Set<string>();
+  let refreshing: Promise<void> | undefined;
+  let again = false;
 
+  const load = async (id: string): Promise<void> => {
+    const response = await context.client.session.list({ parentID: id, limit: CHILD_LIMIT, order: "asc" });
+    const list = (response.data ?? []) as Array<{ id: string }>;
+    for (const child of list) {
+      // Messages of a synced session then follow the live event stream.
+      if (!synced.has(child.id)) {
+        synced.add(child.id);
+        void context.data.session.message.sync(child.id).catch(() => synced.delete(child.id));
+      }
+    }
+    setChildren(list);
+  };
+
+  // Overlapping refreshes coalesce: one runs, and at most one more follows it.
   const refresh = async (sessionID?: string): Promise<void> => {
     const id = sessionID ?? parentID();
     if (!id) return;
     setParentID(id);
-    const response = await api.client.session.children({ sessionID: id });
-    setChildren((response.data ?? response) as unknown[]);
+    if (refreshing) {
+      again = true;
+      return refreshing;
+    }
+    refreshing = load(id)
+      .catch(() => undefined)
+      .finally(() => { refreshing = undefined; });
+    await refreshing;
+    if (again) {
+      again = false;
+      await refresh();
+    }
   };
 
   const workflows = () => collectOdwWorkflows(
     parentID() ?? "",
     children(),
-    (id: string) => api.state.session.status(id),
-    (id: string) => api.state.session.messages(id),
+    (id: string) => context.data.session.status(id),
+    (id: string) => context.data.session.message.list(id),
   );
 
-  const sendControl = async (workflowID: string, action: "pause" | "resume" | "stop"): Promise<void> => {
+  const sendControl = async (workflowID: string, action: Control): Promise<void> => {
     const parent = parentID();
     if (!parent) return;
-    const command = controlCommand(workflowID, action);
-    await api.client.session.command({ sessionID: parent, ...command });
+    try {
+      await context.client.session.command({ sessionID: parent, ...controlCommand(workflowID, action) });
+    } catch (error) {
+      context.ui.toast.show({ variant: "error", title: "Workflows", message: error instanceof Error ? error.message : String(error) });
+    }
     await refresh(parent);
   };
 
-  const toggle = (): void => {
-    const next = !collapsed();
-    setCollapsed(next);
-    api.kv.set(COLLAPSED_KEY, next);
+  const newest = (action: Control) => () => {
+    const workflow = workflows()[0];
+    if (workflow) void sendControl(workflow.id, action);
   };
 
-  const unregisterRoute = api.route.register([{
-    name: "odw-dashboard",
-    render: ({ params }) => {
-      const sessionID = typeof params?.sessionID === "string" ? params.sessionID : parentID();
+  const toggle = (): void => {
+    void updateView((draft) => { draft.collapsed = !draft.collapsed; })
+      .catch((error) => console.error("Failed to persist the Workflows sidebar state", error));
+  };
+
+  const open = (): void => {
+    const route = context.ui.router.current();
+    const sessionID = route.type === "session" ? route.sessionID : parentID();
+    if (sessionID) context.ui.router.navigate({ type: "plugin", name: ROUTE, data: { sessionID } });
+  };
+
+  const close = (): void => {
+    const sessionID = parentID();
+    if (sessionID) context.ui.router.navigate({ type: "session", sessionID });
+  };
+
+  context.ui.router.register({
+    name: ROUTE,
+    render: ({ data }) => {
+      const sessionID = typeof data?.sessionID === "string" ? data.sessionID : parentID();
       void refresh(sessionID);
-      const popMode = api.mode.push(MODE);
-      onCleanup(popMode);
+      onCleanup(context.keymap.mode.push(MODE));
       const box = createElement("box");
       setProp(box, "flexDirection", "column");
       setProp(box, "padding", 1);
-      insert(box, () => renderDashboard(api, workflows(), sendControl));
+      insert(box, () => renderDashboard(context, workflows(), sendControl));
       return box as never;
     },
-  }]);
+  });
 
-  const unregisterCommand = api.keymap.registerLayer({
+  // Reachable from the command palette in every input mode; the shortcut itself is base-mode only.
+  context.keymap.layer(() => ({
+    mode: "global",
     commands: [{
-      name: "odw.dashboard.open",
+      id: OPEN_COMMAND,
       title: "Open Workflows Dashboard",
-      category: "Workflows",
-      namespace: "palette",
-      run() {
-        const current = api.route.current;
-        const sessionID = current.name === "session" ? current.params.sessionID : parentID();
-        if (sessionID) api.route.navigate("odw-dashboard", { sessionID });
-      },
+      group: "Workflows",
+      palette: true,
+      bind: "<leader>w",
+      run: open,
     }],
-    bindings: [],
-  });
+  }));
 
-  const unregisterShortcut = api.keymap.registerLayer({
-    mode: "base",
-    bindings: [{ key: "<leader>w", cmd: "odw.dashboard.open", desc: "Workflows dashboard" }],
-  });
+  context.keymap.layer(() => ({ bindings: [OPEN_COMMAND] }));
 
-  const unregisterDashboardKeys = api.keymap.registerLayer({
+  context.keymap.layer(() => ({
     mode: MODE,
-    bindings: [
-      { key: "escape", cmd: () => parentID() && api.route.navigate("session", { sessionID: parentID() }), desc: "Close dashboard" },
-      { key: "p", cmd: () => workflows()[0] && void sendControl(workflows()[0].id, "pause"), desc: "Pause newest workflow" },
-      { key: "r", cmd: () => workflows()[0] && void sendControl(workflows()[0].id, "resume"), desc: "Resume newest workflow" },
-      { key: "s", cmd: () => workflows()[0] && void sendControl(workflows()[0].id, "stop"), desc: "Stop newest workflow" },
+    commands: [
+      { id: "odw.dashboard.close", title: "Close Workflows dashboard", bind: "escape", run: close },
+      { id: "odw.dashboard.pause", title: "Pause newest workflow", bind: "p", run: newest("pause") },
+      { id: "odw.dashboard.resume", title: "Resume newest workflow", bind: "r", run: newest("resume") },
+      { id: "odw.dashboard.stop", title: "Stop newest workflow", bind: "s", run: newest("stop") },
     ],
+    bindings: ["odw.dashboard.close", "odw.dashboard.pause", "odw.dashboard.resume", "odw.dashboard.stop"],
+  }));
+
+  const stopEvents = context.data.listen(({ details }) => {
+    if (REFRESH_EVENTS.includes(details.type)) void refresh();
   });
 
-  const unregisterEvents = [
-    api.event.on("session.created", () => void refresh()),
-    api.event.on("session.updated", () => void refresh()),
-    api.event.on("session.status", () => void refresh()),
-    api.event.on("message.updated", () => void refresh()),
-  ];
-
-  api.slots.register({
-    order: 210,
-    slots: {
-      sidebar_content(_ctx, props: { session_id: string }) {
-        void refresh(props.session_id);
-        const box = createElement("box");
-        setProp(box, "flexDirection", "column");
-        setProp(box, "paddingTop", 1);
-        insert(box, () => renderSidebar(api, workflows(), collapsed(), toggle));
-        return box as never;
-      },
+  context.ui.slot({
+    append: "sidebar.content",
+    render: (input) => {
+      createEffect(() => {
+        const sessionID = input.sessionID;
+        untrack(() => void refresh(sessionID));
+      });
+      const box = createElement("box");
+      setProp(box, "flexDirection", "column");
+      setProp(box, "paddingTop", 1);
+      insert(box, () => renderSidebar(context, workflows(), view.collapsed, toggle));
+      return box as never;
     },
   });
 
-  api.lifecycle.onDispose(() => {
-    unregisterRoute();
-    unregisterCommand();
-    unregisterShortcut();
-    unregisterDashboardKeys();
-    for (const unregister of unregisterEvents) unregister();
-  });
-};
+  return stopEvents;
+}
 
-function renderSidebar(api: TuiPluginApi, workflows: any[], collapsed: boolean, toggle: () => void): unknown[] {
+function renderSidebar(context: Plugin.Context, workflows: any[], collapsed: boolean, toggle: () => void): unknown[] {
+  const theme = context.theme;
   const active = workflows.filter((workflow) => workflow.status === "running").length;
   const nodes: unknown[] = [text(`${collapsed ? "▶" : "▼"} Workflows (${active} active, ${workflows.length} total)`, {
-    fg: api.theme.current.text,
+    fg: theme.text.base,
     bold: true,
     onMouseDown: (event: { button: number; stopPropagation(): void }) => {
       if (event.button === 0) { event.stopPropagation(); toggle(); }
     },
   })];
   if (collapsed) return nodes;
-  if (!workflows.length) return [...nodes, text("  idle", { fg: api.theme.current.textMuted })];
+  if (!workflows.length) return [...nodes, text("  idle", { fg: theme.text.muted })];
   for (const workflow of workflows) {
-    nodes.push(text(`  • ${workflow.id.slice(0, 14)} ${workflow.status}`, { fg: statusColor(api, workflow.status) }));
-    nodes.push(text(`    ${workflow.profile} · ${workflow.nodes.length} nodes`, { fg: api.theme.current.textMuted }));
+    nodes.push(text(`  • ${workflow.id.slice(0, 14)} ${workflow.status}`, { fg: statusColor(context, workflow.status) }));
+    nodes.push(text(`    ${workflow.profile} · ${workflow.nodes.length} nodes`, { fg: theme.text.muted }));
   }
   return nodes;
 }
 
-function renderDashboard(api: TuiPluginApi, workflows: any[], control: (id: string, action: "pause" | "resume" | "stop") => Promise<void>): unknown[] {
-  const nodes: unknown[] = [text("Workflows", { fg: api.theme.current.text, bold: true })];
-  nodes.push(text("p pause · r resume · s stop · esc close", { fg: api.theme.current.textMuted }));
-  if (!workflows.length) return [...nodes, text("No workflows for this session.", { fg: api.theme.current.textMuted })];
+function renderDashboard(context: Plugin.Context, workflows: any[], control: (id: string, action: Control) => Promise<void>): unknown[] {
+  const theme = context.theme;
+  const nodes: unknown[] = [text("Workflows", { fg: theme.text.base, bold: true })];
+  nodes.push(text("p pause · r resume · s stop · esc close", { fg: theme.text.muted }));
+  if (!workflows.length) return [...nodes, text("No workflows for this session.", { fg: theme.text.muted })];
   for (const workflow of workflows) {
-    nodes.push(text(`${workflow.id}  ${workflow.status}  ${workflow.profile}`, { fg: statusColor(api, workflow.status), bold: true }));
+    nodes.push(text(`${workflow.id}  ${workflow.status}  ${workflow.profile}`, { fg: statusColor(context, workflow.status), bold: true }));
     for (const node of workflow.nodes) {
-      nodes.push(text(`  • ${node.nodeID} ${node.role} ${node.status}${node.model ? ` ${node.model}` : ""}`, { fg: statusColor(api, node.status) }));
-      if (node.error) nodes.push(text(`    ${node.error}`, { fg: api.theme.current.error }));
+      nodes.push(text(`  • ${node.nodeID} ${node.role} ${node.status}${node.model ? ` ${node.model}` : ""}`, { fg: statusColor(context, node.status) }));
+      if (node.error) nodes.push(text(`    ${node.error}`, { fg: theme.text.feedback.error.base }));
     }
     const row = text("  [pause] [resume] [stop]", {
-      fg: api.theme.current.accent,
+      fg: theme.text.action.primary.base,
       onMouseDown: () => void control(workflow.id, workflow.status === "running" ? "pause" : "resume"),
     });
     nodes.push(row);
@@ -153,11 +204,12 @@ function renderDashboard(api: TuiPluginApi, workflows: any[], control: (id: stri
   return nodes;
 }
 
-function statusColor(api: TuiPluginApi, status: string): unknown {
-  if (status === "failed" || status === "error") return api.theme.current.error;
-  if (status === "retrying" || status === "paused" || status === "reconciliation-required") return api.theme.current.warning;
-  if (status === "running" || status === "completed") return api.theme.current.success;
-  return api.theme.current.textMuted;
+function statusColor(context: Plugin.Context, status: string): unknown {
+  const theme = context.theme;
+  if (status === "failed" || status === "error") return theme.text.feedback.error.base;
+  if (status === "retrying" || status === "paused" || status === "reconciliation-required") return theme.text.feedback.warning.base;
+  if (status === "running" || status === "completed") return theme.text.feedback.success.base;
+  return theme.text.muted;
 }
 
 function text(content: string, props: Record<string, unknown> = {}): unknown {
@@ -167,5 +219,5 @@ function text(content: string, props: Record<string, unknown> = {}): unknown {
   return node;
 }
 
-const plugin: TuiPluginModule & { id: string } = { id: PLUGIN_ID, tui };
+const plugin: Plugin.Definition = { id: PLUGIN_ID, setup };
 export default plugin;

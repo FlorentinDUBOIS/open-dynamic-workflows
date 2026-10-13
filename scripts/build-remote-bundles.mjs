@@ -21,7 +21,7 @@ const bundles = [
   {
     entry: 'packages/opencode-plugin/src/tui.ts',
     file: 'tui.js',
-    external: ['@opencode-ai/plugin/tui', '@opentui/solid', 'solid-js'],
+    external: ['@opentui/solid', 'solid-js'],
     exports: ['default'],
     minify: ['--minify-syntax', '--minify-identifiers'],
     runtimeBridge: true,
@@ -60,11 +60,13 @@ function canonicalize(path) {
 
 function inspect(path, bundle) {
   const source = readFileSync(path, 'utf8');
-  for (const forbidden of ['better-sqlite3', 'ODW_DAEMON_TOKEN', 'ODW_DAEMON_PORT', '127.0.0.1:7345', root]) {
+  for (const forbidden of ['better-sqlite3', 'ODW_DAEMON_TOKEN', 'ODW_DAEMON_PORT', '127.0.0.1:7345', '@opencode-ai/plugin', root]) {
     if (source.includes(forbidden)) throw new Error(`${path} contains forbidden runtime dependency ${forbidden}`);
   }
-  const imports = [...source.matchAll(/(?:^|[;\n])import[^;\n]*?\bfrom\s*["']([^"']+)["']/g)]
-    .map((match) => match[1]);
+  const imports = [
+    ...source.matchAll(/(?:^|[;\n])import[^;\n]*?\bfrom\s*["']([^"']+)["']/g),
+    ...source.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g),
+  ].map((match) => match[1]);
   for (const specifier of imports) {
     if (!specifier.startsWith('node:') && !bundle.external.includes(specifier)) {
       throw new Error(`${path} imports unexpected runtime package ${specifier}`);
@@ -78,8 +80,8 @@ function inspect(path, bundle) {
   if (actual.join(',') !== expected.join(',')) {
     throw new Error(
       `${path} exports ${actual.join(',') || '(nothing)'} but must export exactly ${expected.join(',')}; ` +
-      'OpenCode instantiates every export of a plugin module as a plugin factory, so a helper ' +
-      'exported here is called with the plugin input and its return value is used as the hooks object',
+      'OpenCode 2 reads only the default plugin definition, and OpenCode 1 instantiates every export of a ' +
+      'plugin module as a plugin factory, so a helper exported here would be called with the plugin input',
     );
   }
 }
