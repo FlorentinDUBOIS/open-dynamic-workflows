@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createFakeHost } from './fake-host.js';
-import { hasFlock, COULD_NOT_START } from './flock.js';
+import { hasFlock, COULD_NOT_START, ROOT_NOT_ABSOLUTE } from './flock.js';
 
 test('tracked server bundle executes without ODW packages or adjacent WASM', async () => {
   const root = mkdtempSync(join(tmpdir(), 'odw-standalone-'));
@@ -38,7 +38,7 @@ test('tracked server bundle executes without ODW packages or adjacent WASM', asy
       assert.deepEqual([...fake.tools.keys()], ['odw_run', 'odw_status', 'odw_control', 'odw_ultracode']);
       const event = await fake.submit('parent', 'workflow: inspect one thing');
       if (!hasFlock) {
-        assert.match(event.prompt.text, COULD_NOT_START);
+        assert.match(event.prompt.text, process.env.XDG_RUNTIME_DIR.startsWith('/') ? COULD_NOT_START : ROOT_NOT_ABSOLUTE);
         return;
       }
       assert.match(event.prompt.text, /started with profile balanced/);
