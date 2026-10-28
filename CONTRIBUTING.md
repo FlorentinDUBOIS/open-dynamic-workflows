@@ -16,7 +16,7 @@ npm test           # node:test across every package
 npm run lint
 ```
 
-You need Node 20 or newer (the SQLite driver's prebuilt binaries and `p-queue`'s ESM-only build both want it).
+You need Node 22.12 or newer. The current `commander`, `p-queue`, and SQLite driver releases all require Node 22, and Commander sets the highest floor at 22.12.
 
 ## Tests
 

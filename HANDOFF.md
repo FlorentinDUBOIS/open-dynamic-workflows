@@ -2,7 +2,7 @@
 
 ## 1. 🎯 Executive Summary
 
-Open Dynamic Workflows (ODW) is an MIT-licensed system that brings Claude Code-style dynamic, script-orchestrated multi-agent workflows to any agentic coding harness — OpenCode, Codex, Antigravity, VS Code, or a bare shell. A model writes one JavaScript `execute(context)` function; a local daemon runs that script inside a WebAssembly-isolated QuickJS sandbox, fanning each `agent()` call out to your own LLM provider through a concurrency queue, checkpointing to SQLite so runs survive crashes, and adversarially verifying results before returning them. There is no hosted backend, no telemetry, and no cost beyond your own API usage (or zero, with a local Ollama model). It runs cross-platform on Node 20+. Current status: fully implemented and tested (unit + integration + a real crash-resume test + a live run against a free MiniMax model), running locally and published to GitHub.
+Open Dynamic Workflows (ODW) is an MIT-licensed system that brings Claude Code-style dynamic, script-orchestrated multi-agent workflows to any agentic coding harness — OpenCode, Codex, Antigravity, VS Code, or a bare shell. A model writes one JavaScript `execute(context)` function; a local daemon runs that script inside a WebAssembly-isolated QuickJS sandbox, fanning each `agent()` call out to your own LLM provider through a concurrency queue, checkpointing to SQLite so runs survive crashes, and adversarially verifying results before returning them. There is no hosted backend, no telemetry, and no cost beyond your own API usage (or zero, with a local Ollama model). It runs cross-platform on Node 22.12+. Current status: fully implemented and tested (unit + integration + a real crash-resume test + a live run against a free MiniMax model), running locally and published to GitHub.
 
 ## 2. 📋 The Problem
 
@@ -65,13 +65,13 @@ The single environment variable the code reads is `ODW_DAEMON_PORT` (verified vi
 
 ## 5. 🧱 Tech Stack
 
-- **Node.js ≥ 20** (ESM throughout). Rationale: `p-queue` is ESM-only and the maintained `better-sqlite3` prebuilds cover the supported Node range.
-- **better-sqlite3 ^12.11.1** — synchronous SQLite with prebuilt Windows/macOS/Linux binaries for Node 20/22/23/24+ (no compiler needed for normal installs).
+- **Node.js ≥ 22.12** (ESM throughout). Rationale: the current `commander`, `p-queue`, and `better-sqlite3` releases all require Node 22, and Commander sets the highest floor at 22.12.
+- **better-sqlite3 ^13.0.3** — synchronous SQLite with prebuilt Windows/macOS/Linux binaries for the supported Node releases (no compiler needed for normal installs).
 - **quickjs-emscripten 0.32.0** — WASM QuickJS sandbox. Pinned exactly (it is the security boundary).
 - **express ^5.2.1** + **ws ^8.21.0** — HTTP API and WebSocket events on loopback.
-- **p-queue ^9.3.0** — concurrency control for agent HTTP calls.
+- **p-queue ^10.0.0** — concurrency control for agent HTTP calls.
 - **ajv ^8.20.0** — JSON-schema validation of structured agent output.
-- **commander ^14.0.2** — CLI.
+- **commander ^15.0.0** — CLI.
 - Dev: **c8** (coverage), **eslint**. Tests use Node's built-in `node:test`.
 
 ## 6. 📁 Project Structure
@@ -86,7 +86,7 @@ open-dynamic-workflows/
 │   ├── antigravity-adapter/  Antigravity skill + saved workflow
 │   └── vscode-extension/     tree view, dashboard webview, status bar
 ├── examples/workflows/       runnable orchestration scripts (security audit, migration, research)
-├── .github/workflows/ci.yml  test / lint / security jobs (Ubuntu + Windows, Node 20 & 22)
+├── .github/workflows/ci.yml  test / lint / security jobs (Ubuntu, Windows, macOS; Node 22 & 26)
 ├── Dockerfile                multi-stage, non-root, foreground daemon
 └── docker-compose.yml        daemon + persistent volume + healthcheck
 ```
@@ -113,7 +113,7 @@ The daemon logs newline-delimited JSON; `odw-daemon logs --follow` tails it. For
 - **279 tests pass** across the workspace packages, including core, daemon, MCP server, OpenCode, Codex, Cursor, Kimi, Gemini, Zed/zcode-style skills, VS Code, Antigravity, and OpenClaw adapters.
 - **Coverage:** core **96.82%** lines, daemon **91.52%** lines, both over the enforced 80% gate (`c8 --check-coverage --lines 80`).
 - **Test pyramid:** unit (pure functions, providers with injected `fetch`, sandbox isolation), integration (a real HTTP daemon against an in-process mock model — plan → exec → result, WebSocket replay, stop-control, and an explicit **crash-resume test** asserting cached nodes never re-run), and shipped-example execution.
-- **CI** (`.github/workflows/ci.yml`): `test` on a 2×2 matrix (Ubuntu + Windows, Node 20 + 22), `lint`, and `security` (`npm audit --audit-level=high` + a secret-pattern scan). All green at handoff with **0 vulnerabilities**.
+- **CI** (`.github/workflows/ci.yml`): `test` on a 3×2 matrix (Ubuntu, Windows, and macOS; Node 22 and 26), `lint`, and `security` (`npm audit --audit-level=high` + a secret-pattern scan).
 - A live run against the free **minimax-m3-free** model confirmed the full planning → sandbox → real-agent → verification → synthesis path end-to-end.
 
 ## 9. 🎨 Design System
@@ -157,8 +157,8 @@ This is a locally-run developer tool, not a hosted service — "deployment" mean
 The decisions that shaped the codebase.
 
 - **Sandbox: quickjs-emscripten (WASM QuickJS).** Alternatives: `vm2` (abandoned 2023, critical CVEs), `node:vm` (not a security boundary), `isolated-vm` (needs a native toolchain), SES (irreversible global lockdown). Chose WASM-QuickJS for true isolation with a pure-JS install. Trade-off: values cross the boundary as JSON strings. Revisit if the host needs to pass live object handles.
-- **ESM, Node ≥ 20.** Alternatives: CommonJS on Node 18. `p-queue` v9 is ESM-only and SQLite prebuilds need Node 20. Trade-off: drops Node 18. Revisit when the LTS floor moves and `node:sqlite` is stable.
-- **better-sqlite3 ^12.** Alternative: `node:sqlite` (still experimental in some supported runtimes). Synchronous, prebuilt, simple across Node 20+.
+- **ESM, Node ≥ 22.12.** Alternatives: CommonJS on older Node releases. The current `p-queue`, `commander`, and SQLite driver releases require Node 22. Trade-off: drops Node 20 and Node 22 before 22.12. Revisit when the LTS floor moves and `node:sqlite` is stable.
+- **better-sqlite3 ^13.** Alternative: `node:sqlite` (still experimental in some supported runtimes). Synchronous, prebuilt, and simple across supported Node releases.
 - **Adapters talk to the daemon only over HTTP.** Alternative: shared in-process library per host. Keeps each host package thin and the daemon the single source of truth. Trade-off: a network hop on loopback.
 - **Honest platform adapters.** Codex has no plugin marketplace and Antigravity no public automation API, so those adapters use real extension points (skills, `AGENTS.md`, saved workflows, the VS Code extension) and document the limits rather than faking a marketplace listing.
 

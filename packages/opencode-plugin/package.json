@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "odw-opencode",
   "version": "0.1.0",
   "description": "open-dynamic-workflows plugin for OpenCode: workflow/ultracode triggers, planning, daemon orchestration with native-subagent fallback.",
@@ -9,13 +9,16 @@
     "./remote": "./src/remote.js",
     "./tui": "./src/tui.ts"
   },
-  "files": ["dist/server.js", "dist/tui.js"],
+  "files": [
+    "dist/server.js",
+    "dist/tui.js"
+  ],
   "scripts": {
     "test": "node ../../scripts/run-node-tests.mjs"
   },
   "peerDependencies": {
-    "@opencode-ai/plugin": ">=1.18.18",
-    "@opencode/plugin": ">=2.0.28"
+    "@opencode-ai/plugin": ">=1.19.5",
+    "@opencode/plugin": ">=2.2.0"
   },
   "peerDependenciesMeta": {
     "@opencode-ai/plugin": {
@@ -30,13 +33,13 @@
     "odw-daemon": "^0.1.0"
   },
   "devDependencies": {
-    "@opencode-ai/plugin": "^1.19.0",
-    "@opentui/core": "^0.5.17",
-    "@opentui/solid": "^0.5.17",
-    "solid-js": "^1.9.12"
+    "@opencode-ai/plugin": "^1.19.5",
+    "@opentui/core": "^0.7.0",
+    "@opentui/solid": "^0.7.0",
+    "solid-js": "^1.9.17"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "license": "MIT"
 }
